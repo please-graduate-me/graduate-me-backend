@@ -1,5 +1,5 @@
-import { answerLimits } from '@tubedict/shared';
-import type { Mode, Difference, Grade } from '@tubedict/shared';
+import { answerLimits } from '@graduate-me/shared';
+import type { Mode, Difference, Grade } from '@graduate-me/shared';
 /** 대소문자와 문장부호 차이가 채점 결과를 바꾸지 않게 한다. */
 export function tokens(text: string): string[] {
   return (

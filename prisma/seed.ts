@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { recommendations } from '@tubedict/shared';
+import { recommendations } from '@graduate-me/shared';
 const db = new PrismaClient();
 async function main() {
   for (const item of recommendations)

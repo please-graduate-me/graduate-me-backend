@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { actionSchema, registerVideoSchema } from '@tubedict/shared';
+import { actionSchema, registerVideoSchema } from '@graduate-me/shared';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { VideosService } from './videos.service.js';
 @Controller('videos')

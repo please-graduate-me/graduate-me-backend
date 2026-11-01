@@ -5,7 +5,7 @@ import {
   recommendations,
   type Mode,
   type LearningAction,
-} from '@tubedict/shared';
+} from '@graduate-me/shared';
 import { PrismaService } from '../database/prisma.service.js';
 import { HttpError } from '../common/http-error.js';
 import { parseYouTubeUrl } from './youtube.js';

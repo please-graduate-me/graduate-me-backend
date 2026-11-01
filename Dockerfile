@@ -9,6 +9,6 @@ COPY packages/shared/package.json ./packages/shared/
 COPY backend/prisma ./backend/prisma
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm --filter @tubedict/shared build && pnpm --filter @tubedict/api build
+RUN pnpm --filter @graduate-me/shared build && pnpm --filter @graduate-me/api build
 EXPOSE 4000
-CMD ["sh", "-c", "pnpm db:migrate && pnpm db:seed && pnpm --filter @tubedict/api start"]
+CMD ["sh", "-c", "pnpm db:migrate && pnpm db:seed && pnpm --filter @graduate-me/api start"]
