@@ -9,7 +9,11 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { actionSchema, registerVideoSchema } from '@graduate-me/shared';
+import {
+  actionSchema,
+  registerVideoSchema,
+  videoLikeInputSchema,
+} from '@graduate-me/shared';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { VideosService } from './videos.service.js';
 @Controller('videos')
@@ -48,5 +52,15 @@ export class VideosController {
       id,
       actionSchema.parse(body)
     );
+  }
+  @Post(':id/like')
+  @HttpCode(200)
+  like(
+    @Req() request: UserRequest,
+    @Param('id') id: string,
+    @Body() body: unknown
+  ) {
+    const { liked } = videoLikeInputSchema.parse(body);
+    return this.videos.setLike(request.userId, id, liked);
   }
 }

@@ -14,6 +14,7 @@ model User {
   accounts Account[]
   sessions Session[]
   progress Progress[]
+  videoLikes VideoLike[]
 }
 model Account {
   id String @id @default(cuid())
@@ -49,6 +50,9 @@ model Video {
   youtubeId String @unique
   title String
   duration Float?
+  downloadedAt DateTime?
+  category String?
+  youtubeCategoryId String?
   speechRegions Json?
   speechFilterVersion Int @default(0)
   speechCheckedAt DateTime?
@@ -56,6 +60,16 @@ model Video {
   job Job?
   segments Segment[]
   progress Progress[]
+  likes VideoLike[]
+}
+model VideoLike {
+  userId String
+  videoId String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  @@id([userId, videoId])
+  @@index([videoId])
 }
 model Job {
   id String @id @default(uuid())

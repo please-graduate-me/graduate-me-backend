@@ -21,7 +21,9 @@ export class VideosService {
         video: {
           include: {
             job: true,
-            _count: { select: { segments: { where: { excluded: false } } } },
+            _count: {
+              select: { segments: { where: { excluded: false } }, likes: true },
+            },
           },
         },
       },
@@ -29,6 +31,9 @@ export class VideosService {
     return progress.map((p) => ({
       videoId: p.videoId,
       title: p.video.title,
+      downloadedAt: p.video.downloadedAt,
+      category: p.video.category,
+      likeCount: p.video._count.likes,
       currentIndex: p.currentIndex,
       count: p.video._count.segments,
       status: p.video.job?.status ?? 'queued',
@@ -98,6 +103,8 @@ export class VideosService {
         video: {
           include: {
             job: true,
+            likes: { where: { userId }, select: { userId: true } },
+            _count: { select: { likes: true } },
             segments: { where: { excluded: false }, orderBy: { index: 'asc' } },
           },
         },
@@ -111,6 +118,10 @@ export class VideosService {
         youtubeId: video.youtubeId,
         title: video.title,
         duration: video.duration,
+        downloadedAt: video.downloadedAt,
+        category: video.category,
+        liked: video.likes.length > 0,
+        likeCount: video._count.likes,
       },
       job: video.job
         ? {
@@ -137,6 +148,26 @@ export class VideosService {
           revealed: state.revealed,
         })),
     };
+  }
+  async setLike(userId: string, videoId: string, liked: boolean) {
+    return this.db.$transaction(async (tx) => {
+      // 같은 계정의 동시 요청을 직렬화하고 중복 전송은 같은 상태로 수렴시킨다.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${videoId}:like`}))`;
+      const progress = await tx.progress.findUnique({
+        where: { userId_videoId: { userId, videoId } },
+      });
+      if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
+      if (liked)
+        await tx.videoLike.createMany({
+          data: [{ userId, videoId }],
+          skipDuplicates: true,
+        });
+      else await tx.videoLike.deleteMany({ where: { userId, videoId } });
+      return {
+        liked,
+        likeCount: await tx.videoLike.count({ where: { videoId } }),
+      };
+    });
   }
   async applyAction(userId: string, videoId: string, input: LearningAction) {
     return this.db.$transaction(async (tx) => {
