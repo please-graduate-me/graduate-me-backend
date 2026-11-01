@@ -6,10 +6,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/database/package.json ./packages/database/
-COPY packages/database/prisma ./packages/database/prisma
+COPY backend/prisma ./backend/prisma
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm --filter @tubedict/shared build && pnpm --filter @tubedict/database build && pnpm --filter @tubedict/api build
+RUN pnpm --filter @tubedict/shared build && pnpm --filter @tubedict/api build
 EXPOSE 4000
 CMD ["sh", "-c", "pnpm db:migrate && pnpm db:seed && pnpm --filter @tubedict/api start"]

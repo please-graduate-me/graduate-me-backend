@@ -1,6 +1,6 @@
 import { blankIndices, gradeAnswer } from './grading.js';
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@tubedict/database';
+import { Prisma } from '@prisma/client';
 import {
   recommendations,
   type Mode,

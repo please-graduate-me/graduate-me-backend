@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(cuid())
+  name String?
+  email String? @unique
+  emailVerified DateTime?
+  image String?
+  accounts Account[]
+  sessions Session[]
+  progress Progress[]
+}
+model Account {
+  id String @id @default(cuid())
+  userId String
+  type String
+  provider String
+  providerAccountId String
+  refresh_token String? @db.Text
+  access_token String? @db.Text
+  expires_at Int?
+  token_type String?
+  scope String?
+  id_token String? @db.Text
+  session_state String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+model Session {
+  id String @id @default(cuid())
+  sessionToken String @unique
+  userId String
+  expires DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+model VerificationToken {
+  identifier String
+  token String @unique
+  expires DateTime
+  @@unique([identifier, token])
+}
+model Video {
+  id String @id @default(uuid())
+  youtubeId String @unique
+  title String
+  duration Float?
+  speechRegions Json?
+  speechFilterVersion Int @default(0)
+  speechCheckedAt DateTime?
+  createdAt DateTime @default(now())
+  job Job?
+  segments Segment[]
+  progress Progress[]
+}
+model Job {
+  id String @id @default(uuid())
+  videoId String @unique
+  status String @default("queued")
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  leaseToken String?
+  heartbeatAt DateTime?
+  errorCode String?
+  errorMessage String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  @@index([status, availableAt])
+}
+model Segment {
+  id String @id @default(uuid())
+  videoId String
+  index Int
+  start Float
+  end Float
+  text String
+  words Json
+  excluded Boolean @default(false)
+  exclusionReason String?
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  states SegmentState[]
+  attempts Attempt[]
+  @@unique([videoId, index])
+}
+model Progress {
+  id String @id @default(uuid())
+  userId String
+  videoId String
+  currentIndex Int @default(0)
+  mode String @default("full")
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  states SegmentState[]
+  attempts Attempt[]
+  @@unique([userId, videoId])
+}
+model SegmentState {
+  id String @id @default(uuid())
+  progressId String
+  segmentId String
+  mode String
+  draft Json
+  status String @default("pending")
+  revealed Boolean @default(false)
+  updatedAt DateTime @updatedAt
+  progress Progress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+  segment Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  @@unique([progressId, segmentId, mode])
+}
+model Attempt {
+  id String @id
+  progressId String
+  segmentId String
+  mode String
+  answer Json
+  result Json
+  correct Boolean
+  createdAt DateTime @default(now())
+  progress Progress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+  segment Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+}
