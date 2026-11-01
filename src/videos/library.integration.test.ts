@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../database/prisma.service.js';
 import { VideosService } from './videos.service.js';
 import { CatalogService } from './catalog.service.js';
+import { SettingsService } from '../users/settings.service.js';
 
 const testUrl = process.env.TEST_DATABASE_URL;
 if (testUrl && !new URL(testUrl).pathname.endsWith('_test'))
@@ -15,6 +16,7 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
   );
   const videos = new VideosService(db);
   const catalog = new CatalogService(db);
+  const settings = new SettingsService(db);
   const userId = randomUUID(),
     otherId = randomUUID();
   const ids = Array.from({ length: 3 }, () => randomUUID());
@@ -59,6 +61,35 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
     await db.user.deleteMany({ where: { id: { in: [userId, otherId] } } });
     await db.video.deleteMany({ where: { id: { in: ids } } });
     await db.$disconnect();
+  });
+  it('재생 설정은 계정별로 저장되며 다른 영상과 초기화 뒤에도 유지된다', async () => {
+    expect(await settings.get(otherId)).toEqual({
+      autoReplay: false,
+      replayDelay: 1,
+      replayCount: null,
+      playbackRate: 1,
+    });
+    const options = {
+      autoReplay: true,
+      replayDelay: 3,
+      replayCount: 5,
+      playbackRate: 0.75,
+    } as const;
+    await settings.update(userId, options);
+    await db.progress.create({ data: { userId, videoId: ids[1] } });
+    try {
+      expect((await videos.getLesson(userId, ids[0])).settings).toEqual(
+        options
+      );
+      expect((await videos.getLesson(userId, ids[1])).settings).toEqual(
+        options
+      );
+      await videos.applyAction(userId, ids[1], { action: 'reset' });
+      expect(await settings.get(userId)).toEqual(options);
+      expect((await settings.get(otherId)).autoReplay).toBe(false);
+    } finally {
+      await db.progress.deleteMany({ where: { userId, videoId: ids[1] } });
+    }
   });
   it('관심 영상과 안 들리는 구절은 개인별로 저장하며 중복되지 않는다', async () => {
     await videos.setFavorite(userId, ids[0], true);

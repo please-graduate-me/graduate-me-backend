@@ -10,6 +10,10 @@ model User {
   name String?
   email String? @unique
   emailVerified DateTime?
+  autoReplay Boolean @default(false)
+  replayDelay Int @default(1)
+  replayCount Int?
+  playbackRate Float @default(1)
   image String?
   accounts Account[]
   sessions Session[]

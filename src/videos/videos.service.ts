@@ -105,6 +105,14 @@ export class VideosService {
       where: { userId_videoId: { userId, videoId } },
       include: {
         states: true,
+        user: {
+          select: {
+            autoReplay: true,
+            replayDelay: true,
+            replayCount: true,
+            playbackRate: true,
+          },
+        },
         difficulties: {
           where: { segment: { excluded: false } },
           select: { segmentId: true },
@@ -122,6 +130,7 @@ export class VideosService {
     if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
     const { video, states } = progress;
     return {
+      settings: progress.user,
       video: {
         id: video.id,
         youtubeId: video.youtubeId,
