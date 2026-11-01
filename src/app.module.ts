@@ -9,12 +9,19 @@ import { CatalogController } from './videos/catalog.controller.js';
 import { CatalogService } from './videos/catalog.service.js';
 import { SettingsController } from './users/settings.controller.js';
 import { SettingsService } from './users/settings.service.js';
+import { SharesController } from './shares/shares.controller.js';
+import { SharesService } from './shares/shares.service.js';
+import { AdminController } from './admin/admin.controller.js';
+import { AdminService } from './admin/admin.service.js';
+import { AdminGuard } from './admin/admin.guard.js';
 @Module({
   controllers: [
     AppController,
     VideosController,
     CatalogController,
     SettingsController,
+    SharesController,
+    AdminController,
   ],
   providers: [
     PrismaService,
@@ -23,6 +30,9 @@ import { SettingsService } from './users/settings.service.js';
     VideosService,
     CatalogService,
     SettingsService,
+    SharesService,
+    AdminService,
+    AdminGuard,
   ],
 })
 /** API 기능의 의존성을 하나의 서버 진입점에서 조립한다. */
