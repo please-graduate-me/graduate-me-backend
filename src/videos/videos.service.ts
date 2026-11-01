@@ -15,9 +15,12 @@ export class VideosService {
   constructor(@Inject(PrismaService) private readonly db: PrismaService) {}
   async list(userId: string) {
     const progress = await this.db.progress.findMany({
-      where: { userId },
+      where: { userId, archivedAt: null },
       orderBy: { updatedAt: 'desc' },
       include: {
+        _count: {
+          select: { difficulties: { where: { segment: { excluded: false } } } },
+        },
         video: {
           include: {
             job: true,
@@ -35,6 +38,8 @@ export class VideosService {
       category: p.video.category,
       likeCount: p.video._count.likes,
       currentIndex: p.currentIndex,
+      favorite: p.favorite,
+      difficultCount: p._count.difficulties,
       count: p.video._count.segments,
       status: p.video.job?.status ?? 'queued',
       updatedAt: p.updatedAt,
@@ -66,7 +71,7 @@ export class VideosService {
       if (!job) await tx.job.create({ data: { videoId: video.id } });
       await tx.progress.upsert({
         where: { userId_videoId: { userId, videoId: video.id } },
-        update: {},
+        update: { archivedAt: null },
         create: { userId, videoId: video.id },
       });
       return { videoId: video.id };
@@ -100,6 +105,10 @@ export class VideosService {
       where: { userId_videoId: { userId, videoId } },
       include: {
         states: true,
+        difficulties: {
+          where: { segment: { excluded: false } },
+          select: { segmentId: true },
+        },
         video: {
           include: {
             job: true,
@@ -130,7 +139,12 @@ export class VideosService {
             errorMessage: video.job.errorMessage,
           }
         : null,
-      progress: { currentIndex: progress.currentIndex, mode: progress.mode },
+      progress: {
+        currentIndex: progress.currentIndex,
+        mode: progress.mode,
+        favorite: progress.favorite,
+      },
+      difficultSegmentIds: progress.difficulties.map((item) => item.segmentId),
       segments: video.segments.map((segment, index) => ({
         ...segment,
         index,
@@ -148,6 +162,24 @@ export class VideosService {
           revealed: state.revealed,
         })),
     };
+  }
+  async setFavorite(userId: string, videoId: string, favorite: boolean) {
+    const result = await this.db.progress.updateMany({
+      where: { userId, videoId },
+      data: { favorite },
+    });
+    if (!result.count)
+      throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
+    return { ok: true };
+  }
+  async removeFromLibrary(userId: string, videoId: string) {
+    const result = await this.db.progress.updateMany({
+      where: { userId, videoId },
+      data: { archivedAt: new Date() },
+    });
+    if (!result.count)
+      throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
+    return { ok: true };
   }
   async setLike(userId: string, videoId: string, liked: boolean) {
     return this.db.$transaction(async (tx) => {
@@ -184,6 +216,9 @@ export class VideosService {
       if (input.action === 'reset') {
         // 공유 영상은 보존하고 잠근 사용자 진도에 속한 두 모드의 기록만 지운다.
         await tx.attempt.deleteMany({ where: { progressId: progress.id } });
+        await tx.segmentDifficulty.deleteMany({
+          where: { progressId: progress.id },
+        });
         await tx.segmentState.deleteMany({
           where: { progressId: progress.id },
         });
@@ -219,6 +254,16 @@ export class VideosService {
       const activeIndex = activeSegments.findIndex(
         (item) => item.id === segment.id
       );
+      if (input.action === 'difficulty') {
+        const key = { progressId: progress.id, segmentId: segment.id };
+        if (input.marked)
+          await tx.segmentDifficulty.createMany({
+            data: [key],
+            skipDuplicates: true,
+          });
+        else await tx.segmentDifficulty.deleteMany({ where: key });
+        return { ok: true };
+      }
       if (
         'answer' in input &&
         (input.mode === 'full'

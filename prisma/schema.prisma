@@ -99,6 +99,7 @@ model Segment {
   video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
   states SegmentState[]
   attempts Attempt[]
+  difficulties SegmentDifficulty[]
   @@unique([videoId, index])
 }
 model Progress {
@@ -107,12 +108,23 @@ model Progress {
   videoId String
   currentIndex Int @default(0)
   mode String @default("full")
+  favorite Boolean @default(false)
+  archivedAt DateTime?
   updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
   states SegmentState[]
   attempts Attempt[]
+  difficulties SegmentDifficulty[]
   @@unique([userId, videoId])
+}
+model SegmentDifficulty {
+  progressId String
+  segmentId String
+  createdAt DateTime @default(now())
+  progress Progress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+  segment Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  @@id([progressId, segmentId])
 }
 model SegmentState {
   id String @id @default(uuid())

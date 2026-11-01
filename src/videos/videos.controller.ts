@@ -13,6 +13,7 @@ import {
   actionSchema,
   registerVideoSchema,
   videoLikeInputSchema,
+  videoFavoriteInputSchema,
 } from '@graduate-me/shared';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { VideosService } from './videos.service.js';
@@ -62,5 +63,23 @@ export class VideosController {
   ) {
     const { liked } = videoLikeInputSchema.parse(body);
     return this.videos.setLike(request.userId, id, liked);
+  }
+  @Post(':id/favorite')
+  @HttpCode(200)
+  favorite(
+    @Req() request: UserRequest,
+    @Param('id') id: string,
+    @Body() body: unknown
+  ) {
+    return this.videos.setFavorite(
+      request.userId,
+      id,
+      videoFavoriteInputSchema.parse(body).favorite
+    );
+  }
+  @Post(':id/remove')
+  @HttpCode(200)
+  remove(@Req() request: UserRequest, @Param('id') id: string) {
+    return this.videos.removeFromLibrary(request.userId, id);
   }
 }

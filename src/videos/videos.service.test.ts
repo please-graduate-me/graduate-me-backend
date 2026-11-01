@@ -14,6 +14,7 @@ function setup(ownsVideo = true) {
     job: { findUnique: vi.fn().mockResolvedValue({ status: 'ready' }) },
     attempt: { deleteMany: vi.fn().mockResolvedValue({ count: 2 }) },
     segmentState: { deleteMany: vi.fn().mockResolvedValue({ count: 2 }) },
+    segmentDifficulty: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
     videoLike: {
       createMany: vi.fn().mockResolvedValue({ count: 1 }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -46,6 +47,9 @@ describe('영상별 학습 기록 초기화', () => {
     expect(tx.progress.update).toHaveBeenCalledWith({
       where: { id: 'my-progress' },
       data: { currentIndex: 0, mode: 'full' },
+    });
+    expect(tx.segmentDifficulty.deleteMany).toHaveBeenCalledWith({
+      where: { progressId: 'my-progress' },
     });
     expect(tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(
       tx.attempt.deleteMany.mock.invocationCallOrder[0]
