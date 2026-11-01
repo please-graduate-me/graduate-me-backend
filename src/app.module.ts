@@ -1,3 +1,4 @@
+import { DemoController } from './videos/demo.controller.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
 import { PrismaService } from './database/prisma.service.js';
@@ -17,6 +18,7 @@ import { AdminGuard } from './admin/admin.guard.js';
 @Module({
   controllers: [
     AppController,
+    DemoController,
     VideosController,
     CatalogController,
     SettingsController,
