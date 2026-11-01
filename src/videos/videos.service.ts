@@ -150,6 +150,18 @@ export class VideosService {
       const job = await tx.job.findUnique({ where: { videoId } });
       if (job?.status !== 'ready')
         throw new HttpError(409, '영상 처리가 아직 완료되지 않았습니다.');
+      if (input.action === 'reset') {
+        // 공유 영상은 보존하고 잠근 사용자 진도에 속한 두 모드의 기록만 지운다.
+        await tx.attempt.deleteMany({ where: { progressId: progress.id } });
+        await tx.segmentState.deleteMany({
+          where: { progressId: progress.id },
+        });
+        await tx.progress.update({
+          where: { id: progress.id },
+          data: { currentIndex: 0, mode: 'full' },
+        });
+        return { ok: true };
+      }
       const activeSegments = await tx.segment.findMany({
         where: { videoId, excluded: false },
         orderBy: { index: 'asc' },
