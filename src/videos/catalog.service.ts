@@ -14,10 +14,12 @@ export class CatalogService {
       ...(query.category ? { category: query.category } : {}),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' } } : {}),
     };
+
     const orderBy: Prisma.VideoOrderByWithRelationInput[] =
       query.sort === 'popular'
         ? [{ likes: { _count: 'desc' } }, { createdAt: 'desc' }, { id: 'asc' }]
         : [{ createdAt: 'desc' }, { id: 'asc' }];
+
     // 한 개 더 조회해 전체 집계 없이 다음 페이지 유무를 알린다.
     const rows = await this.db.video.findMany({
       where,
@@ -34,6 +36,7 @@ export class CatalogService {
         _count: { select: { likes: true } },
       },
     });
+
     return {
       items: rows
         .slice(0, query.limit)
@@ -54,6 +57,7 @@ export class CatalogService {
       _count: { _all: true },
       orderBy: { category: 'asc' },
     });
+
     return rows.map((row) => ({
       category: row.category!,
       count: row._count._all,

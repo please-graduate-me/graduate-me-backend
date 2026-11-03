@@ -17,6 +17,7 @@ import {
 } from '@graduate-me/shared';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { VideosService } from './videos.service.js';
+
 @Controller('videos')
 @UseGuards(AuthGuard)
 /** 전송 계층의 입력 검증을 업무 처리와 분리한다. */
@@ -30,6 +31,7 @@ export class VideosController {
   @HttpCode(200)
   register(@Req() request: UserRequest, @Body() body: unknown) {
     const { url } = registerVideoSchema.parse(body);
+
     return this.videos.registerVideo(request.userId, url);
   }
   @Get(':id')
@@ -62,6 +64,7 @@ export class VideosController {
     @Body() body: unknown
   ) {
     const { liked } = videoLikeInputSchema.parse(body);
+
     return this.videos.setLike(request.userId, id, liked);
   }
   @Post(':id/favorite')

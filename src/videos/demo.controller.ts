@@ -20,7 +20,9 @@ export class DemoController {
         },
       },
     });
+
     const ready = video?.job?.status === 'ready' && video.segments.length > 0;
+
     return {
       youtubeId: demoYoutubeId,
       status: ready

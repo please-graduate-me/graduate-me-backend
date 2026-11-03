@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../database/prisma.service.js';
 import { HttpError } from '../common/http-error.js';
 import { parseYouTubeUrl } from './youtube.js';
+
 @Injectable()
 /** 영상과 계정별 진도 변경을 트랜잭션 경계 안에서 처리한다. */
 export class VideosService {
@@ -31,6 +32,7 @@ export class VideosService {
         },
       },
     });
+
     return progress.map((p) => ({
       videoId: p.videoId,
       title: p.video.title,
@@ -47,14 +49,17 @@ export class VideosService {
   }
   async registerVideo(userId: string, url: string) {
     let youtubeId: string;
+
     try {
       youtubeId = parseYouTubeUrl(url);
     } catch (error) {
       throw new HttpError(400, (error as Error).message);
     }
+
     return this.db.$transaction(async (tx) => {
       // 같은 영상의 동시 등록이 작업을 중복 생성하지 않도록 직렬화한다.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${youtubeId}))`;
+
       const video = await tx.video.upsert({
         where: { youtubeId },
         update: {},
@@ -65,15 +70,19 @@ export class VideosService {
               ?.title ?? '영상 정보를 확인하고 있어요',
         },
       });
+
       const job = await tx.job.findUnique({ where: { videoId: video.id } });
+
       if (!job && !(process.env.GROQ_API_KEY || process.env.QRUQ_WHISPER))
         throw new HttpError(503, '음성 인식 API 키가 설정되지 않았습니다.');
       if (!job) await tx.job.create({ data: { videoId: video.id } });
+
       await tx.progress.upsert({
         where: { userId_videoId: { userId, videoId: video.id } },
         update: { archivedAt: null },
         create: { userId, videoId: video.id },
       });
+
       return { videoId: video.id };
     });
   }
@@ -81,9 +90,11 @@ export class VideosService {
     const progress = await this.db.progress.findUnique({
       where: { userId_videoId: { userId, videoId } },
     });
+
     if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
     if (!(process.env.GROQ_API_KEY || process.env.QRUQ_WHISPER))
       throw new HttpError(503, '음성 인식 API 키가 설정되지 않았습니다.');
+
     const updated = await this.db.job.updateMany({
       where: { videoId, status: 'failed' },
       data: {
@@ -96,8 +107,10 @@ export class VideosService {
         errorMessage: null,
       },
     });
+
     if (!updated.count)
       throw new HttpError(409, '실패한 작업만 다시 시도할 수 있습니다.');
+
     return { ok: true };
   }
   async getLesson(userId: string, videoId: string) {
@@ -127,8 +140,10 @@ export class VideosService {
         },
       },
     });
+
     if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
     const { video, states } = progress;
+
     return {
       settings: progress.user,
       video: {
@@ -177,8 +192,10 @@ export class VideosService {
       where: { userId, videoId },
       data: { favorite },
     });
+
     if (!result.count)
       throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
+
     return { ok: true };
   }
   async removeFromLibrary(userId: string, videoId: string) {
@@ -186,17 +203,21 @@ export class VideosService {
       where: { userId, videoId },
       data: { archivedAt: new Date() },
     });
+
     if (!result.count)
       throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
+
     return { ok: true };
   }
   async setLike(userId: string, videoId: string, liked: boolean) {
     return this.db.$transaction(async (tx) => {
       // 같은 계정의 동시 요청을 직렬화하고 중복 전송은 같은 상태로 수렴시킨다.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${videoId}:like`}))`;
+
       const progress = await tx.progress.findUnique({
         where: { userId_videoId: { userId, videoId } },
       });
+
       if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
       if (liked)
         await tx.videoLike.createMany({
@@ -204,6 +225,7 @@ export class VideosService {
           skipDuplicates: true,
         });
       else await tx.videoLike.deleteMany({ where: { userId, videoId } });
+
       return {
         liked,
         likeCount: await tx.videoLike.count({ where: { videoId } }),
@@ -213,66 +235,86 @@ export class VideosService {
   async applyAction(userId: string, videoId: string, input: LearningAction) {
     return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT id FROM "Video" WHERE id = ${videoId} FOR SHARE`;
+
       const progress = await tx.progress.findUnique({
         where: { userId_videoId: { userId, videoId } },
       });
+
       if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
       // 동일 계정의 저장과 제출이 오래된 진도를 덮어쓰지 않게 한다.
       await tx.$executeRaw`SELECT id FROM "Progress" WHERE id = ${progress.id} FOR UPDATE`;
       const job = await tx.job.findUnique({ where: { videoId } });
+
       if (job?.status !== 'ready')
         throw new HttpError(409, '영상 처리가 아직 완료되지 않았습니다.');
+
       if (input.action === 'reset') {
         // 공유 영상은 보존하고 잠근 사용자 진도에 속한 두 모드의 기록만 지운다.
         await tx.attempt.deleteMany({ where: { progressId: progress.id } });
+
         await tx.segmentDifficulty.deleteMany({
           where: { progressId: progress.id },
         });
+
         await tx.segmentState.deleteMany({
           where: { progressId: progress.id },
         });
+
         await tx.progress.update({
           where: { id: progress.id },
           data: { currentIndex: 0, mode: 'full' },
         });
+
         return { ok: true };
       }
+
       const activeSegments = await tx.segment.findMany({
         where: { videoId, excluded: false },
         orderBy: { index: 'asc' },
         select: { id: true },
       });
+
       const count = activeSegments.length;
+
       if (input.action === 'navigate') {
         if (input.index > count)
           throw new HttpError(400, '구절 범위를 벗어났습니다.');
+
         await tx.progress.update({
           where: { id: progress.id },
           data: { currentIndex: input.index, mode: input.mode },
         });
+
         return { ok: true };
       }
+
       const segment = await tx.segment.findFirst({
         where: { id: input.segmentId, videoId, excluded: false },
       });
+
       if (!segment)
         throw new HttpError(
           404,
           '이 구절이 없거나 학습 목록에서 제외되었습니다. 새로고침해 주세요.'
         );
+
       const activeIndex = activeSegments.findIndex(
         (item) => item.id === segment.id
       );
+
       if (input.action === 'difficulty') {
         const key = { progressId: progress.id, segmentId: segment.id };
+
         if (input.marked)
           await tx.segmentDifficulty.createMany({
             data: [key],
             skipDuplicates: true,
           });
         else await tx.segmentDifficulty.deleteMany({ where: key });
+
         return { ok: true };
       }
+
       if (
         'answer' in input &&
         (input.mode === 'full'
@@ -282,47 +324,59 @@ export class VideosService {
       ) {
         throw new HttpError(400, '학습 모드에 맞는 답안을 입력해 주세요.');
       }
+
       const key = {
         progressId: progress.id,
         segmentId: segment.id,
         mode: input.mode,
       };
+
       const state = await tx.segmentState.upsert({
         where: { progressId_segmentId_mode: key },
         update: {},
         create: { ...key, draft: input.mode === 'full' ? '' : [] },
       });
+
       if (input.action === 'draft') {
         await tx.segmentState.update({
           where: { id: state.id },
           data: { draft: input.answer },
         });
+
         return { ok: true };
       }
+
       if (input.action === 'reveal') {
         await tx.segmentState.update({
           where: { id: state.id },
           data: { revealed: true },
         });
+
         return { text: segment.text };
       }
+
       if (input.action === 'skip') {
         await tx.segmentState.update({
           where: { id: state.id },
           data: { status: state.status === 'correct' ? 'correct' : 'skipped' },
         });
+
         await tx.progress.update({
           where: { id: progress.id },
           data: { currentIndex: activeIndex + 1, mode: input.mode },
         });
+
         return { nextIndex: activeIndex + 1 };
       }
+
       if (input.action !== 'submit')
         throw new HttpError(400, '지원하지 않는 동작입니다.');
+
       // 네트워크 재전송은 같은 결과를 돌려주되 다른 답안의 요청 ID 재사용은 거부한다.
       const existing = await tx.attempt.findUnique({
         where: { id: input.requestId },
       });
+
       if (existing) {
         if (
           existing.progressId !== progress.id ||
@@ -331,16 +385,19 @@ export class VideosService {
           JSON.stringify(existing.answer) !== JSON.stringify(input.answer)
         )
           throw new HttpError(409, '이미 사용된 요청입니다.');
+
         return {
           grade: existing.result,
           nextIndex: existing.correct ? activeIndex + 1 : activeIndex,
         };
       }
+
       const result = gradeAnswer(
         segment.text,
         input.mode as Mode,
         input.answer
       );
+
       await tx.attempt.create({
         data: {
           id: input.requestId,
@@ -350,6 +407,7 @@ export class VideosService {
           correct: result.correct,
         },
       });
+
       await tx.segmentState.update({
         where: { id: state.id },
         data: {
@@ -357,11 +415,14 @@ export class VideosService {
           status: result.correct ? 'correct' : state.status,
         },
       });
+
       const nextIndex = result.correct ? activeIndex + 1 : activeIndex;
+
       await tx.progress.update({
         where: { id: progress.id },
         data: { currentIndex: nextIndex, mode: input.mode },
       });
+
       return { grade: result, nextIndex };
     });
   }

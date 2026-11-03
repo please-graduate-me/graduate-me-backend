@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from './database/prisma.service.js';
 import { AuthService } from './auth/auth.service.js';
+
 @Controller()
 /** 클라이언트가 서버 준비 상태를 인증 없이 확인할 수 있게 한다. */
 export class AppController {
@@ -17,6 +18,7 @@ export class AppController {
   async health() {
     try {
       await this.db.$queryRaw`SELECT 1`;
+
       return { status: 'ok' };
     } catch {
       throw new ServiceUnavailableException({ status: 'unavailable' });

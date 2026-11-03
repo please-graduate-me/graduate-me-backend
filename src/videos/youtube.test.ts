@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseYouTubeUrl } from './youtube.js';
+
 describe('유튜브 URL', () => {
   it.each([
     'https://www.youtube.com/watch?v=JnfBXjWm7hc&t=5',
@@ -7,6 +8,7 @@ describe('유튜브 URL', () => {
     'https://m.youtube.com/watch?v=JnfBXjWm7hc',
     'https://youtube.com/shorts/JnfBXjWm7hc',
   ])('정규화: %s', (url) => expect(parseYouTubeUrl(url)).toBe('JnfBXjWm7hc'));
+
   it.each([
     'https://youtube.com.evil.org/watch?v=JnfBXjWm7hc',
     'https://youtube.com@evil.org/watch?v=JnfBXjWm7hc',

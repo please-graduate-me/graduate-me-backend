@@ -4,6 +4,7 @@ import Google from '@auth/express/providers/google';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import type { Request } from 'express';
 import { PrismaService } from '../database/prisma.service.js';
+
 @Injectable()
 /** 세션과 OAuth 설정이 여러 API에서 다르게 적용되지 않게 한다. */
 export class AuthService {

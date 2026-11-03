@@ -17,7 +17,9 @@ export class SettingsService {
         playbackRate: true,
       },
     });
+
     if (!settings) throw new HttpError(404, '사용자를 찾을 수 없습니다.');
+
     return settings;
   }
   async update(userId: string, settings: LearningSettings) {

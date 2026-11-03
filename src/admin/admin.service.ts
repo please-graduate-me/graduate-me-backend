@@ -12,11 +12,14 @@ export class AdminService {
       .split(',')
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
+
     if (!emails.length) return false;
+
     const user = await this.db.user.findUnique({
       where: { id: userId },
       select: { email: true },
     });
+
     return Boolean(user?.email && emails.includes(user.email.toLowerCase()));
   }
   async shares(query: AdminShareQuery) {
@@ -53,6 +56,7 @@ export class AdminService {
         },
       }),
     ]);
+
     return {
       summary: { links, visits, starts },
       items: rows.slice(0, query.limit).map(({ _count, ...link }) => ({
@@ -69,11 +73,13 @@ export class AdminService {
       where: { id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
     if (
       !result.count &&
       !(await this.db.shareLink.findUnique({ where: { id } }))
     )
       throw new HttpError(404, '공유 링크를 찾을 수 없습니다.');
+
     return { ok: true };
   }
 }

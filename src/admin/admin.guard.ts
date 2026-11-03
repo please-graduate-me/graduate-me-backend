@@ -14,8 +14,10 @@ export class AdminGuard implements CanActivate {
   constructor(@Inject(AdminService) private readonly admin: AdminService) {}
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<UserRequest>();
+
     if (!(await this.admin.allowed(request.userId)))
       throw new HttpError(403, '관리자만 접근할 수 있습니다.');
+
     return true;
   }
 }
