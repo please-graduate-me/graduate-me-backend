@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
-import { publicVideoQuerySchema } from '@graduate-me/shared';
+import { publicVideoQuerySchema } from './catalog-contracts.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CatalogService } from './catalog.service.js';
 

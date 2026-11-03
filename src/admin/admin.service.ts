@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { AdminShareQuery } from '@graduate-me/shared';
+import type { AdminShareQuery } from './contracts.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { HttpError } from '../common/http-error.js';
 

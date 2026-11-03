@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { createShareSchema, shareVisitSchema } from '@graduate-me/shared';
+import { createShareSchema, shareVisitSchema } from './contracts.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { SharesService } from './shares.service.js';
 

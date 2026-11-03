@@ -8,7 +8,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { learningSettingsSchema } from '@graduate-me/shared';
+import { learningSettingsSchema } from './settings.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { SettingsService } from './settings.service.js';
 

@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
-import { demoYoutubeId } from '@graduate-me/shared';
+import { demoYoutubeId } from './demo.js';
 import { DemoController } from './demo.controller.js';
 import { CatalogController } from './catalog.controller.js';
 import { AuthGuard } from '../auth/auth.guard.js';

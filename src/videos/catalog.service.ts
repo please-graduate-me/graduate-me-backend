@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { PublicVideoQuery } from '@graduate-me/shared';
+import type { PublicVideoQuery } from './catalog-contracts.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Injectable()

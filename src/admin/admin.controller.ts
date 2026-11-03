@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { adminShareQuerySchema } from '@graduate-me/shared';
+import { adminShareQuerySchema } from './contracts.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { AdminGuard } from './admin.guard.js';
 import { AdminService } from './admin.service.js';

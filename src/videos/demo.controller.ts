@@ -1,5 +1,5 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import { demoYoutubeId, type DemoLesson } from '@graduate-me/shared';
+import { demoYoutubeId, type DemoLesson } from './demo.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Controller('demo')

@@ -1,11 +1,9 @@
 import { blankIndices, gradeAnswer } from './grading.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import {
-  recommendations,
-  type Mode,
-  type LearningAction,
-} from '@graduate-me/shared';
+import { recommendations } from './catalog.js';
+import { type Mode } from './contracts.js';
+import { type LearningAction } from './actions.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { HttpError } from '../common/http-error.js';
 import { parseYouTubeUrl } from './youtube.js';

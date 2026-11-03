@@ -9,12 +9,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { actionSchema } from './actions.js';
 import {
-  actionSchema,
   registerVideoSchema,
   videoLikeInputSchema,
   videoFavoriteInputSchema,
-} from '@graduate-me/shared';
+} from './contracts.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { VideosService } from './videos.service.js';
 

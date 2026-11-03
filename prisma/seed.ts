@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { recommendations, demoYoutubeId } from '@graduate-me/shared';
+import { recommendations } from '../src/videos/catalog.js';
+import { demoYoutubeId } from '../src/videos/demo.js';
 
 const db = new PrismaClient();
 

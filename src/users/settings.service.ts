@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { LearningSettings } from '@graduate-me/shared';
+import type { LearningSettings } from './settings.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { HttpError } from '../common/http-error.js';
 
