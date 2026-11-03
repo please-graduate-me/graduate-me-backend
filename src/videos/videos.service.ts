@@ -260,7 +260,7 @@ export class VideosService {
 
         await tx.progress.update({
           where: { id: progress.id },
-          data: { currentIndex: 0, mode: 'full' },
+          data: { currentIndex: 0, mode: 'blank' },
         });
 
         return { ok: true };

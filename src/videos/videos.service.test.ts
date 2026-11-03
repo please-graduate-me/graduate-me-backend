@@ -53,7 +53,7 @@ describe('영상별 학습 기록 초기화', () => {
 
     expect(tx.progress.update).toHaveBeenCalledWith({
       where: { id: 'my-progress' },
-      data: { currentIndex: 0, mode: 'full' },
+      data: { currentIndex: 0, mode: 'blank' },
     });
 
     expect(tx.segmentDifficulty.deleteMany).toHaveBeenCalledWith({

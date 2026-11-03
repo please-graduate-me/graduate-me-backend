@@ -149,7 +149,7 @@ model Progress {
   userId String
   videoId String
   currentIndex Int @default(0)
-  mode String @default("full")
+  mode String @default("blank")
   favorite Boolean @default(false)
   archivedAt DateTime?
   updatedAt DateTime @updatedAt
