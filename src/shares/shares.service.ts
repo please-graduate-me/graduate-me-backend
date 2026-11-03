@@ -1,25 +1,32 @@
+import { DataSource, type EntityManager } from 'typeorm';
+import { Progress } from '../database/entities/Progress.entity.js';
+import { Video } from '../database/entities/Video.entity.js';
+import { Segment } from '../database/entities/Segment.entity.js';
+import { ShareLink } from '../database/entities/ShareLink.entity.js';
+import { ShareVisit } from '../database/entities/ShareVisit.entity.js';
+import { ShareStart } from '../database/entities/ShareStart.entity.js';
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../database/prisma.service.js';
 import { HttpError } from '../common/http-error.js';
 
 @Injectable()
 /** 공유 자료와 방문 집계를 개인 학습 기록에서 분리한다. */
 export class SharesService {
-  constructor(@Inject(PrismaService) private readonly db: PrismaService) {}
-  private async active(tx: Prisma.TransactionClient, id: string) {
-    const link = await tx.shareLink.findFirst({
-      where: {
-        id,
-        revokedAt: null,
-        video: {
-          job: { is: { status: 'ready' } },
-          segments: { some: { excluded: false } },
-        },
-        OR: [{ segmentId: null }, { segment: { is: { excluded: false } } }],
-      },
-      include: { video: true, segment: true },
-    });
+  constructor(@Inject(DataSource) private readonly db: DataSource) {}
+  private async active(tx: EntityManager, id: string) {
+    const link = await tx
+      .getRepository(ShareLink)
+      .createQueryBuilder('link')
+      .innerJoinAndSelect('link.video', 'video')
+      .innerJoin('video.job', 'job', 'job.status = :status', {
+        status: 'ready',
+      })
+      .leftJoinAndSelect('link.segment', 'segment')
+      .where('link.id = :id AND link.revokedAt IS NULL', { id })
+      .andWhere(
+        'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = video.id AND NOT s.excluded)'
+      )
+      .andWhere('(link.segmentId IS NULL OR segment.excluded = false)')
+      .getOne();
 
     if (!link)
       throw new HttpError(
@@ -33,23 +40,29 @@ export class SharesService {
     userId: string,
     input: { requestId: string; videoId: string; segmentId?: string }
   ) {
-    return this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestId}))`;
+    return this.db.transaction(async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        input.requestId,
+      ]);
 
-      const progress = await tx.progress.findUnique({
-        where: { userId_videoId: { userId, videoId: input.videoId } },
+      const progress = await tx.findOne(Progress, {
+        where: { userId, videoId: input.videoId },
       });
 
       if (!progress)
         throw new HttpError(404, '내 학습에 등록한 영상만 공유할 수 있습니다.');
 
-      const video = await tx.video.findFirst({
-        where: {
-          id: input.videoId,
-          job: { is: { status: 'ready' } },
-          segments: { some: { excluded: false } },
-        },
-      });
+      const video = await tx
+        .getRepository(Video)
+        .createQueryBuilder('video')
+        .innerJoin('video.job', 'job', 'job.status = :status', {
+          status: 'ready',
+        })
+        .where('video.id = :id', { id: input.videoId })
+        .andWhere(
+          'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = video.id AND NOT s.excluded)'
+        )
+        .getOne();
 
       if (!video)
         throw new HttpError(
@@ -58,13 +71,13 @@ export class SharesService {
         );
       if (
         input.segmentId &&
-        !(await tx.segment.findFirst({
+        !(await tx.findOne(Segment, {
           where: { id: input.segmentId, videoId: video.id, excluded: false },
         }))
       )
         throw new HttpError(404, '공유할 구절을 찾을 수 없습니다.');
 
-      const existing = await tx.shareLink.findUnique({
+      const existing = await tx.findOne(ShareLink, {
         where: { id: input.requestId },
       });
 
@@ -78,20 +91,18 @@ export class SharesService {
       if (existing?.revokedAt)
         throw new HttpError(409, '중지된 공유 링크입니다.');
       if (!existing)
-        await tx.shareLink.create({
-          data: {
-            id: input.requestId,
-            creatorId: userId,
-            videoId: video.id,
-            segmentId: input.segmentId,
-          },
+        await tx.insert(ShareLink, {
+          id: input.requestId,
+          creatorId: userId,
+          videoId: video.id,
+          segmentId: input.segmentId,
         });
 
       return { id: input.requestId, path: `/share/${input.requestId}` };
     });
   }
   async get(id: string) {
-    const { video, segment } = await this.active(this.db, id);
+    const { video, segment } = await this.active(this.db.manager, id);
 
     return {
       id,
@@ -108,28 +119,37 @@ export class SharesService {
     };
   }
   async visit(id: string, visitId: string) {
-    return this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT id FROM "ShareLink" WHERE id = ${id} FOR SHARE`;
+    return this.db.transaction(async (tx) => {
+      await tx.query('SELECT id FROM "ShareLink" WHERE id = $1 FOR SHARE', [
+        id,
+      ]);
+
       await this.active(tx, id);
 
-      await tx.shareVisit.createMany({
-        data: [{ shareId: id, visitId }],
-        skipDuplicates: true,
-      });
+      await tx
+        .createQueryBuilder()
+        .insert()
+        .into(ShareVisit)
+        .values([{ shareId: id, visitId }])
+        .orIgnore()
+        .execute();
 
       return { ok: true };
     });
   }
   async start(userId: string, id: string, visitId: string) {
-    return this.db.$transaction(async (tx) => {
+    return this.db.transaction(async (tx) => {
       // 공유 중지와 학습 시작이 동시에 처리되지 않게 한다.
-      await tx.$executeRaw`SELECT id FROM "ShareLink" WHERE id = ${id} FOR UPDATE`;
+      await tx.query('SELECT id FROM "ShareLink" WHERE id = $1 FOR UPDATE', [
+        id,
+      ]);
+
       const link = await this.active(tx, id);
 
-      const segments = await tx.segment.findMany({
+      const segments = await tx.find(Segment, {
         where: { videoId: link.videoId, excluded: false },
-        orderBy: { index: 'asc' },
         select: { id: true },
+        order: { index: 'asc' },
       });
 
       const index = link.segmentId
@@ -139,24 +159,38 @@ export class SharesService {
       if (index < 0)
         throw new HttpError(404, '학습할 구절을 찾을 수 없습니다.');
 
-      await tx.progress.upsert({
-        where: { userId_videoId: { userId, videoId: link.videoId } },
-        create: { userId, videoId: link.videoId, currentIndex: index },
-        update: {
+      await tx
+        .createQueryBuilder()
+        .insert()
+        .into(Progress)
+        .values({ userId, videoId: link.videoId, currentIndex: index })
+        .orIgnore()
+        .execute();
+
+      await tx.update(
+        Progress,
+        { userId, videoId: link.videoId },
+        {
           archivedAt: null,
           ...(link.segmentId ? { currentIndex: index } : {}),
-        },
-      });
+        }
+      );
 
-      await tx.shareVisit.createMany({
-        data: [{ shareId: id, visitId }],
-        skipDuplicates: true,
-      });
+      await tx
+        .createQueryBuilder()
+        .insert()
+        .into(ShareVisit)
+        .values([{ shareId: id, visitId }])
+        .orIgnore()
+        .execute();
 
-      await tx.shareStart.createMany({
-        data: [{ shareId: id, userId }],
-        skipDuplicates: true,
-      });
+      await tx
+        .createQueryBuilder()
+        .insert()
+        .into(ShareStart)
+        .values([{ shareId: id, userId }])
+        .orIgnore()
+        .execute();
 
       return { videoId: link.videoId };
     });

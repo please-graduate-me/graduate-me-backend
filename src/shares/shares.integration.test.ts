@@ -1,8 +1,17 @@
+import { DataSource, In } from 'typeorm';
+import { databaseOptions } from '../database/options.js';
+import { Job } from '../database/entities/Job.entity.js';
+import { Segment } from '../database/entities/Segment.entity.js';
+import { User } from '../database/entities/User.entity.js';
+import { Video } from '../database/entities/Video.entity.js';
+import { Progress } from '../database/entities/Progress.entity.js';
+import { ShareLink } from '../database/entities/ShareLink.entity.js';
+import { ShareVisit } from '../database/entities/ShareVisit.entity.js';
+import { ShareStart } from '../database/entities/ShareStart.entity.js';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sharedLessonSchema } from './contracts.js';
-import { PrismaService } from '../database/prisma.service.js';
 import { SharesService } from './shares.service.js';
 import { AdminService } from '../admin/admin.service.js';
 
@@ -12,9 +21,7 @@ if (testUrl && !new URL(testUrl).pathname.endsWith('_test'))
   throw new Error('별도 테스트 DB만 사용할 수 있습니다.');
 
 describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
-  const db = new PrismaService(
-    testUrl ? { datasources: { db: { url: testUrl } } } : {}
-  );
+  const db = new DataSource(databaseOptions(testUrl));
 
   const shares = new SharesService(db),
     admin = new AdminService(db);
@@ -31,64 +38,67 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
   const email = `${randomUUID()}@example.test`;
 
   beforeAll(async () => {
-    await db.user.createMany({
-      data: [{ id: creatorId, email }, { id: learnerId }, { id: outsiderId }],
+    await db.initialize();
+
+    await db.manager.insert(User, [
+      { id: creatorId, email },
+      { id: learnerId },
+      { id: outsiderId },
+    ]);
+
+    await db.manager.insert(Video, {
+      id: videoId,
+      youtubeId: randomUUID().replaceAll('-', '').slice(0, 11),
+      title: '공유 검증 영상',
     });
 
-    await db.video.create({
-      data: {
-        id: videoId,
-        youtubeId: randomUUID().replaceAll('-', '').slice(0, 11),
-        title: '공유 검증 영상',
-        job: { create: { status: 'ready' } },
-        segments: {
-          create: segments.map((id, index) => ({
-            id,
-            index,
-            start: index * 3,
-            end: index * 3 + 2,
-            text: 'Hello world.',
-            words: [],
-            excluded: index === 1,
-          })),
-        },
-      },
+    await db.manager.insert(Job, { videoId, status: 'ready' });
+
+    await db.manager.insert(
+      Segment,
+      segments.map((id, index) => ({
+        id,
+        videoId,
+        index,
+        start: index * 3,
+        end: index * 3 + 2,
+        text: 'Hello world.',
+        words: [],
+        excluded: index === 1,
+      }))
+    );
+
+    await db.manager.insert(Video, {
+      id: otherVideoId,
+      youtubeId: randomUUID().replaceAll('-', '').slice(0, 11),
+      title: '다른 영상',
     });
 
-    await db.video.create({
-      data: {
-        id: otherVideoId,
-        youtubeId: randomUUID().replaceAll('-', '').slice(0, 11),
-        title: '다른 영상',
-        job: { create: { status: 'ready' } },
-        segments: {
-          create: {
-            id: otherSegment,
-            index: 0,
-            start: 1,
-            end: 3,
-            text: 'Other video.',
-            words: [],
-          },
-        },
-      },
+    await db.manager.insert(Job, { videoId: otherVideoId, status: 'ready' });
+
+    await db.manager.insert(Segment, {
+      id: otherSegment,
+      videoId: otherVideoId,
+      index: 0,
+      start: 1,
+      end: 3,
+      text: 'Other video.',
+      words: [],
     });
 
-    await db.progress.create({ data: { userId: creatorId, videoId } });
+    await db.manager.insert(Progress, { userId: creatorId, videoId });
   });
 
   afterAll(async () => {
     vi.unstubAllEnvs();
 
-    await db.user.deleteMany({
-      where: { id: { in: [creatorId, learnerId, outsiderId] } },
+    await db.manager.delete(User, {
+      id: In([creatorId, learnerId, outsiderId]),
     });
 
-    await db.video.deleteMany({
-      where: { id: { in: [videoId, otherVideoId] } },
-    });
+    await db.manager.delete(Video, { id: In([videoId, otherVideoId]) });
 
-    await db.$disconnect();
+    await db.destroy();
   });
 
   it('영상과 구절 링크를 만들되 타인 기록과 다른 영상의 구절은 공유하지 못한다', async () => {
@@ -101,7 +111,11 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
     });
 
     await shares.create(creatorId, input);
-    expect(await db.shareLink.count({ where: { id: requestId } })).toBe(1);
+
+    expect(
+      await db.manager.count(ShareLink, { where: { id: requestId } })
+    ).toBe(1);
+
     const result = sharedLessonSchema.parse(await shares.get(requestId));
 
     expect(result.segment).toEqual({ id: segments[2], start: 6, end: 8 });
@@ -139,18 +153,24 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
     await Promise.all([shares.visit(id, visitId), shares.visit(id, visitId)]);
     await shares.start(learnerId, id, visitId);
     await shares.start(learnerId, id, visitId);
-    expect(await db.shareVisit.count({ where: { shareId: id } })).toBe(1);
-    expect(await db.shareStart.count({ where: { shareId: id } })).toBe(1);
+
+    expect(await db.manager.count(ShareVisit, { where: { shareId: id } })).toBe(
+      1
+    );
+
+    expect(await db.manager.count(ShareStart, { where: { shareId: id } })).toBe(
+      1
+    );
 
     expect(
-      await db.progress.findUnique({
-        where: { userId_videoId: { userId: learnerId, videoId } },
+      await db.manager.findOne(Progress, {
+        where: { userId: learnerId, videoId },
       })
     ).toMatchObject({ currentIndex: 1 });
 
     expect(
-      await db.progress.findUnique({
-        where: { userId_videoId: { userId: creatorId, videoId } },
+      await db.manager.findOne(Progress, {
+        where: { userId: creatorId, videoId },
       })
     ).toMatchObject({ currentIndex: 0 });
   });
@@ -160,16 +180,17 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
 
     await shares.create(creatorId, { requestId: id, videoId });
 
-    await db.progress.update({
-      where: { userId_videoId: { userId: learnerId, videoId } },
-      data: { currentIndex: 2, archivedAt: new Date() },
-    });
+    await db.manager.update(
+      Progress,
+      { userId: learnerId, videoId },
+      { currentIndex: 2, archivedAt: new Date() }
+    );
 
     await shares.start(learnerId, id, randomUUID());
 
     expect(
-      await db.progress.findUnique({
-        where: { userId_videoId: { userId: learnerId, videoId } },
+      await db.manager.findOne(Progress, {
+        where: { userId: learnerId, videoId },
       })
     ).toMatchObject({ currentIndex: 2, archivedAt: null });
   });
@@ -206,26 +227,30 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
       shares.start(learnerId, id, randomUUID())
     ).rejects.toMatchObject({ status: 404 });
 
-    expect(await db.shareVisit.count({ where: { shareId: id } })).toBe(1);
+    expect(await db.manager.count(ShareVisit, { where: { shareId: id } })).toBe(
+      1
+    );
   });
 
   it('공유자 탈퇴 후에도 공용 링크와 방문 집계를 유지한다', async () => {
     const removedId = randomUUID(),
       id = randomUUID();
 
-    await db.user.create({
-      data: { id: removedId, progress: { create: { videoId } } },
-    });
+    await db.manager.insert(User, { id: removedId });
+    await db.manager.insert(Progress, { userId: removedId, videoId });
 
     await shares.create(removedId, { requestId: id, videoId });
     await shares.visit(id, randomUUID());
-    await db.user.delete({ where: { id: removedId } });
+    await db.manager.delete(User, { id: removedId });
 
     expect(
-      (await db.shareLink.findUnique({ where: { id } }))?.creatorId
+      (await db.manager.findOne(ShareLink, { where: { id } }))?.creatorId
     ).toBeNull();
 
     expect((await shares.get(id)).video.id).toBe(videoId);
-    expect(await db.shareVisit.count({ where: { shareId: id } })).toBe(1);
+
+    expect(await db.manager.count(ShareVisit, { where: { shareId: id } })).toBe(
+      1
+    );
   });
 });

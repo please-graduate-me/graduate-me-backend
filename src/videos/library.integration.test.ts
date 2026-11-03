@@ -1,7 +1,13 @@
+import { DataSource, In } from 'typeorm';
+import { databaseOptions } from '../database/options.js';
+import { Job } from '../database/entities/Job.entity.js';
+import { Segment } from '../database/entities/Segment.entity.js';
+import { User } from '../database/entities/User.entity.js';
+import { Video } from '../database/entities/Video.entity.js';
+import { Progress } from '../database/entities/Progress.entity.js';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PrismaService } from '../database/prisma.service.js';
 import { VideosService } from './videos.service.js';
 import { CatalogService } from './catalog.service.js';
 import { SettingsService } from '../users/settings.service.js';
@@ -12,9 +18,7 @@ if (testUrl && !new URL(testUrl).pathname.endsWith('_test'))
   throw new Error('별도 테스트 DB만 사용할 수 있습니다.');
 
 describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
-  const db = new PrismaService(
-    testUrl ? { datasources: { db: { url: testUrl } } } : {}
-  );
+  const db = new DataSource(databaseOptions(testUrl));
 
   const videos = new VideosService(db);
   const catalog = new CatalogService(db);
@@ -29,46 +33,47 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
   const youtubeId = randomUUID().replaceAll('-', '').slice(0, 11);
 
   beforeAll(async () => {
-    await db.user.createMany({ data: [{ id: userId }, { id: otherId }] });
+    await db.initialize();
+    await db.manager.insert(User, [{ id: userId }, { id: otherId }]);
 
     for (const [index, id] of ids.entries()) {
-      await db.video.create({
-        data: {
-          id,
-          youtubeId:
-            index === 0
-              ? youtubeId
-              : randomUUID().replaceAll('-', '').slice(0, 11),
-          title: `검증 영상 ${index}`,
-          category,
-          createdAt: new Date(2026, 0, index + 1),
-          job: { create: { status: index === 2 ? 'failed' : 'ready' } },
-          segments: {
-            create: {
-              id: index === 0 ? segmentId : randomUUID(),
-              index: 0,
-              start: 1,
-              end: 3,
-              text: 'Hello world.',
-              words: [],
-            },
-          },
-        },
+      await db.manager.insert(Video, {
+        id,
+        youtubeId:
+          index === 0
+            ? youtubeId
+            : randomUUID().replaceAll('-', '').slice(0, 11),
+        title: `검증 영상 ${index}`,
+        category,
+        createdAt: new Date(2026, 0, index + 1),
+      });
+
+      await db.manager.insert(Job, {
+        videoId: id,
+        status: index === 2 ? 'failed' : 'ready',
+      });
+
+      await db.manager.insert(Segment, {
+        videoId: id,
+        id: index === 0 ? segmentId : randomUUID(),
+        index: 0,
+        start: 1,
+        end: 3,
+        text: 'Hello world.',
+        words: [],
       });
     }
 
-    await db.progress.createMany({
-      data: [
-        { userId, videoId: ids[0], currentIndex: 1 },
-        { userId: otherId, videoId: ids[0] },
-      ],
-    });
+    await db.manager.insert(Progress, [
+      { userId, videoId: ids[0], currentIndex: 1 },
+      { userId: otherId, videoId: ids[0] },
+    ]);
   });
 
   afterAll(async () => {
-    await db.user.deleteMany({ where: { id: { in: [userId, otherId] } } });
-    await db.video.deleteMany({ where: { id: { in: ids } } });
-    await db.$disconnect();
+    await db.manager.delete(User, { id: In([userId, otherId]) });
+    await db.manager.delete(Video, { id: In(ids) });
+    await db.destroy();
   });
 
   it('재생 설정은 계정별로 저장되며 다른 영상과 초기화 뒤에도 유지된다', async () => {
@@ -87,7 +92,7 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
     } as const;
 
     await settings.update(userId, options);
-    await db.progress.create({ data: { userId, videoId: ids[1] } });
+    await db.manager.insert(Progress, { userId, videoId: ids[1] });
 
     try {
       expect((await videos.getLesson(userId, ids[0])).settings).toEqual(
@@ -102,7 +107,7 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
       expect(await settings.get(userId)).toEqual(options);
       expect((await settings.get(otherId)).autoReplay).toBe(false);
     } finally {
-      await db.progress.deleteMany({ where: { userId, videoId: ids[1] } });
+      await db.manager.delete(Progress, { userId, videoId: ids[1] });
     }
   });
 
@@ -171,6 +176,18 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
     expect(first.items[0]).toMatchObject({ id: ids[0], likeCount: 1 });
     expect(first.items[0]).not.toHaveProperty('favorite');
     expect(first.items[0]).not.toHaveProperty('progress');
+
+    expect(
+      (
+        await catalog.list({
+          category,
+          q: '%',
+          sort: 'latest',
+          page: 1,
+          limit: 20,
+        })
+      ).items
+    ).toEqual([]);
 
     const next = await catalog.list({
       category,

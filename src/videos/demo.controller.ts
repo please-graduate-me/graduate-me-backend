@@ -1,27 +1,31 @@
+import { DataSource } from 'typeorm';
+import { Video } from '../database/entities/Video.entity.js';
+import { Segment } from '../database/entities/Segment.entity.js';
 import { Controller, Get, Inject } from '@nestjs/common';
 import { demoYoutubeId, type DemoLesson } from './demo.js';
-import { PrismaService } from '../database/prisma.service.js';
 
 @Controller('demo')
 /** 공개 요청은 고정 체험 영상에만 접근하며 개인 기록을 생성하지 않는다. */
 export class DemoController {
-  constructor(@Inject(PrismaService) private readonly db: PrismaService) {}
+  constructor(@Inject(DataSource) private readonly db: DataSource) {}
   @Get()
   async lesson(): Promise<DemoLesson> {
-    const video = await this.db.video.findUnique({
+    const video = await this.db.manager.findOne(Video, {
       where: { youtubeId: demoYoutubeId },
-      select: {
-        job: { select: { status: true } },
-        segments: {
-          where: { excluded: false },
-          orderBy: { index: 'asc' },
-          take: 10,
-          select: { id: true, start: true, end: true, text: true },
-        },
-      },
+      relations: { job: true },
+      select: { id: true, job: { status: true } },
     });
 
-    const ready = video?.job?.status === 'ready' && video.segments.length > 0;
+    const segments = video
+      ? await this.db.manager.find(Segment, {
+          where: { videoId: video.id, excluded: false },
+          order: { index: 'ASC' },
+          take: 10,
+          select: { id: true, start: true, end: true, text: true },
+        })
+      : [];
+
+    const ready = video?.job?.status === 'ready' && segments.length > 0;
 
     return {
       youtubeId: demoYoutubeId,
@@ -30,7 +34,7 @@ export class DemoController {
         : video?.job?.status === 'failed' || video?.job?.status === 'ready'
           ? 'failed'
           : 'preparing',
-      segments: ready ? video.segments : [],
+      segments: ready ? segments : [],
     };
   }
 }

@@ -5,7 +5,6 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
-COPY backend/prisma ./backend/prisma
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @graduate-me/api build

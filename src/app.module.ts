@@ -1,7 +1,8 @@
 import { DemoController } from './videos/demo.controller.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
-import { PrismaService } from './database/prisma.service.js';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseOptions } from './database/options.js';
 import { AuthService } from './auth/auth.service.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { VideosController } from './videos/videos.controller.js';
@@ -17,6 +18,7 @@ import { AdminService } from './admin/admin.service.js';
 import { AdminGuard } from './admin/admin.guard.js';
 
 @Module({
+  imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
     AppController,
     DemoController,
@@ -27,7 +29,6 @@ import { AdminGuard } from './admin/admin.guard.js';
     AdminController,
   ],
   providers: [
-    PrismaService,
     AuthService,
     AuthGuard,
     VideosService,

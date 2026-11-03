@@ -1,21 +1,21 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { getSession, type ExpressAuthConfig } from '@auth/express';
 import Google from '@auth/express/providers/google';
-import { PrismaAdapter } from '@auth/prisma-adapter';
+import { typeormAdapter } from './typeorm-adapter.js';
 import type { Request } from 'express';
-import { PrismaService } from '../database/prisma.service.js';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 /** 세션과 OAuth 설정이 여러 API에서 다르게 적용되지 않게 한다. */
 export class AuthService {
   readonly config: ExpressAuthConfig;
   private readonly logger = new Logger(AuthService.name);
-  constructor(@Inject(PrismaService) private readonly db: PrismaService) {
+  constructor(@Inject(DataSource) private readonly db: DataSource) {
     this.config = {
       basePath: '/api/auth',
       trustHost: true,
       secret: process.env.AUTH_SECRET,
-      adapter: PrismaAdapter(this.db),
+      adapter: typeormAdapter(this.db),
       providers: [
         Google({
           clientId: process.env.AUTH_GOOGLE_ID,
