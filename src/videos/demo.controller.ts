@@ -15,7 +15,7 @@ export class DemoController {
         segments: {
           where: { excluded: false },
           orderBy: { index: 'asc' },
-          take: 5,
+          take: 10,
           select: { id: true, start: true, end: true, text: true },
         },
       },

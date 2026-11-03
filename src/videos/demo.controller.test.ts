@@ -23,7 +23,7 @@ describe('공개 체험의 조회 범위', () => {
     );
   });
 
-  it('지정 영상의 학습 가능한 구절 다섯 개만 조회한다', async () => {
+  it('지정 영상의 학습 가능한 구절 최대 열 개만 조회한다', async () => {
     const segments = [{ id: 'one', start: 10, end: 15, text: 'Hello there.' }];
 
     const { controller, findUnique } = setup({
@@ -44,7 +44,7 @@ describe('공개 체험의 조회 범위', () => {
           segments: {
             where: { excluded: false },
             orderBy: { index: 'asc' },
-            take: 5,
+            take: 10,
             select: { id: true, start: true, end: true, text: true },
           },
         }),
