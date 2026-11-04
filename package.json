@@ -18,7 +18,9 @@
     "check": "pnpm format && pnpm lint && pnpm typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:show": "node --import tsx ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts"
+    "db:show": "node --import tsx ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts",
+    "start:worker": "node dist/worker/main.js",
+    "dev:worker": "pnpm build && node dist/worker/main.js"
   },
   "dependencies": {
     "@auth/core": "0.41.3",
