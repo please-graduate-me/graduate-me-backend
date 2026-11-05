@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nest start",
+    "dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build --watch",
     "build": "nest build",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
@@ -20,7 +20,10 @@
     "test:watch": "vitest",
     "db:show": "node --import tsx ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts",
     "start:worker": "node dist/worker/main.js",
-    "dev:worker": "pnpm build && node dist/worker/main.js"
+    "dev:worker": "pnpm build && node dist/worker/main.js",
+    "dev:app": "nest start",
+    "dev:down": "docker compose -f compose.yaml -f compose.dev.yaml down",
+    "dev:logs": "docker compose logs --follow --tail=50"
   },
   "dependencies": {
     "@auth/core": "0.41.3",
@@ -37,10 +40,27 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^22",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^4.0.18",
     "@nestjs/cli": "12.0.11",
     "@types/express": "^5.0.6",
-    "@types/node": "^22",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "tsx": "^4.21.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "overrides": {
+      "deepmerge-ts": "8.0.2"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

@@ -1,6 +1,10 @@
 {
-  "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2022",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": "src",

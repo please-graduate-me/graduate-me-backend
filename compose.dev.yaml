@@ -1,0 +1,62 @@
+---
+services:
+  api:
+    build:
+      context: '.'
+      dockerfile: Dockerfile.dev
+    command: sh -c "pnpm db:migrate && pnpm db:seed && pnpm dev:app"
+    develop:
+      watch:
+        - action: sync+restart
+          path: '.'
+          target: '/app'
+          initial_sync: true
+          ignore:
+            - node_modules/
+            - dist/
+            - '.next/'
+            - '.git/'
+            - '.env'
+            - '.env.*'
+            - '.agents/'
+            - '*.tsbuildinfo'
+            - package.json
+            - pnpm-lock.yaml
+            - Dockerfile*
+            - compose*.yaml
+        - action: rebuild
+          path: './pnpm-lock.yaml'
+        - action: rebuild
+          path: './package.json'
+        - action: rebuild
+          path: './Dockerfile.dev'
+  worker:
+    build:
+      context: '.'
+      dockerfile: Dockerfile.dev
+    command: pnpm dev:worker
+    develop:
+      watch:
+        - action: sync+restart
+          path: '.'
+          target: '/app'
+          initial_sync: true
+          ignore:
+            - node_modules/
+            - dist/
+            - '.next/'
+            - '.git/'
+            - '.env'
+            - '.env.*'
+            - '.agents/'
+            - '*.tsbuildinfo'
+            - package.json
+            - pnpm-lock.yaml
+            - Dockerfile*
+            - compose*.yaml
+        - action: rebuild
+          path: './pnpm-lock.yaml'
+        - action: rebuild
+          path: './package.json'
+        - action: rebuild
+          path: './Dockerfile.dev'

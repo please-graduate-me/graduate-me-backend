@@ -1,0 +1,28 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+!.env.test.example
+*.tsbuildinfo
+__pycache__/
+.venv/
+.DS_Store
+coverage/
+
+**/dist/
+**/.next/
+**/node_modules/
+
+# Impeccable 실행 바이너리는 로컬 캐시로 관리한다.
+/.agents/skills/impeccable/scripts/bin/
+
+# Impeccable 실행 결과와 개인 설정만 제외하고 공유 자료는 추적한다.
+/.impeccable/*
+!/.impeccable/config.json
+!/.impeccable/design.json
+!/.impeccable/surfaces/
+!/.impeccable/critique/
+!/.impeccable/live/
+/.impeccable/live/*
+!/.impeccable/live/config.json

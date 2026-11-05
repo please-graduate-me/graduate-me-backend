@@ -1,0 +1,26 @@
+name: graduate-me-backend-test
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: graduate_me
+      POSTGRES_PASSWORD: graduate_me_test
+      POSTGRES_DB: graduate_me_split_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U graduate_me -d graduate_me_split_test']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://graduate_me:graduate_me_test@db:5432/graduate_me_split_test
+      TEST_DATABASE_URL: postgresql://graduate_me:graduate_me_test@db:5432/graduate_me_split_test
+    command: sh -c "pnpm db:migrate && pnpm test"
+    depends_on:
+      db:
+        condition: service_healthy
