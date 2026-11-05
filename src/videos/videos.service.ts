@@ -91,8 +91,6 @@ export class VideosService {
 
       const job = await tx.findOne(Job, { where: { videoId: video.id } });
 
-      if (!job && !(process.env.GROQ_API_KEY || process.env.QRUQ_WHISPER))
-        throw new HttpError(503, '음성 인식 API 키가 설정되지 않았습니다.');
       if (!job) await tx.insert(Job, { videoId: video.id });
 
       await tx
@@ -118,8 +116,6 @@ export class VideosService {
     });
 
     if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
-    if (!(process.env.GROQ_API_KEY || process.env.QRUQ_WHISPER))
-      throw new HttpError(503, '음성 인식 API 키가 설정되지 않았습니다.');
 
     const updated = await this.db.manager.update(
       Job,

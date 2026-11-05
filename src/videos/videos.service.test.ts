@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
 import { Progress } from '../database/entities/Progress.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
@@ -35,6 +35,7 @@ function setup(ownsVideo = true) {
   };
 
   const db = {
+    manager: tx,
     transaction: async (
       operation: (transaction: typeof tx) => Promise<unknown>
     ) => operation(tx),
@@ -46,6 +47,46 @@ function setup(ownsVideo = true) {
     service: new VideosService(db as unknown as DataSource),
   };
 }
+
+describe('분리된 음성 처리기의 작업 등록', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('API 서버에 음성 인식 키가 없어도 영상 처리 작업을 등록한다', async () => {
+    vi.stubEnv('GROQ_API_KEY', '');
+    vi.stubEnv('QRUQ_WHISPER', '');
+    const { service, tx } = setup();
+    const insert = vi.fn().mockResolvedValue({});
+
+    Object.assign(tx, {
+      findOneBy: vi.fn().mockResolvedValue({ id: 'shared-video' }),
+      insert,
+    });
+
+    tx.findOne.mockResolvedValueOnce(null);
+
+    await expect(
+      service.registerVideo('me', 'https://youtu.be/VHZI9_we5GQ')
+    ).resolves.toEqual({ videoId: 'shared-video' });
+
+    expect(insert).toHaveBeenCalledWith(Job, { videoId: 'shared-video' });
+  });
+
+  it('API 서버에 음성 인식 키가 없어도 본인 영상의 실패한 작업을 재시도한다', async () => {
+    vi.stubEnv('GROQ_API_KEY', '');
+    vi.stubEnv('QRUQ_WHISPER', '');
+    const { service, tx } = setup();
+
+    await expect(service.retryVideo('me', 'video')).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(tx.update).toHaveBeenCalledWith(
+      Job,
+      { videoId: 'video', status: 'failed' },
+      expect.objectContaining({ status: 'queued', attempts: 0 })
+    );
+  });
+});
 
 describe('영상별 학습 기록 초기화', () => {
   it('본인 영상의 두 모드 기록을 지우고 첫 구절과 기본 모드로 돌아간다', async () => {
