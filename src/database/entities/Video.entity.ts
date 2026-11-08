@@ -11,12 +11,8 @@ export interface Video {
   youtubeId: string;
   title: string;
   duration: number | null;
-  downloadedAt: Date | null;
   category: string | null;
   youtubeCategoryId: string | null;
-  speechRegions: { start: number; end: number }[] | null;
-  speechFilterVersion: number;
-  speechCheckedAt: Date | null;
   createdAt: Date;
   job: Job | null;
   segments: Segment[];
@@ -38,12 +34,8 @@ export const Video = new EntitySchema<Video>({
     youtubeId: { type: 'text' },
     title: { type: 'text' },
     duration: { type: 'double precision', nullable: true },
-    downloadedAt: { type: 'timestamp', precision: 3, nullable: true },
     category: { type: 'text', nullable: true },
     youtubeCategoryId: { type: 'text', nullable: true },
-    speechRegions: { type: 'jsonb', nullable: true },
-    speechFilterVersion: { type: 'integer', default: 0 },
-    speechCheckedAt: { type: 'timestamp', precision: 3, nullable: true },
     createdAt: {
       type: 'timestamp',
       precision: 3,

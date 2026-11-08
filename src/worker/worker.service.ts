@@ -41,9 +41,8 @@ export class WorkerService {
 
     try {
       const result = await this.processor.run(
-        { youtubeId: job.youtubeId, operation: 'transcribe' },
+        { youtubeId: job.youtubeId },
         async (event) => {
-          if (event.type === 'downloaded') await this.queue.downloaded(job);
           if (event.type === 'transcribing')
             await this.queue.transcribing(job, event);
         },

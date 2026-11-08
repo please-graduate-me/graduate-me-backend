@@ -13,28 +13,20 @@ import { databaseOptions } from '../database/options.js';
 import { Video } from '../database/entities/Video.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
 import { Segment } from '../database/entities/Segment.entity.js';
-import { User } from '../database/entities/User.entity.js';
-import { Progress } from '../database/entities/Progress.entity.js';
-import { SegmentState } from '../database/entities/SegmentState.entity.js';
-import { Attempt } from '../database/entities/Attempt.entity.js';
 import { QueueService } from './queue.service.js';
-import { RecheckService } from './recheck.service.js';
 
 const testUrl = process.env.TEST_DATABASE_URL;
 
 if (testUrl && !new URL(testUrl).pathname.endsWith('_test'))
   throw new Error('별도 테스트 DB만 사용할 수 있습니다.');
 
-describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
+describe.skipIf(!testUrl)('NestJS 작업 큐 DB 통합', () => {
   const db = new DataSource(databaseOptions(testUrl));
   const queue = new QueueService(db);
-  const recheck = new RecheckService(db);
   let videoId: string;
   let jobId: string;
-  const users: string[] = [];
 
   const metadata = {
-    version: 1,
     type: 'transcribing',
     title: '검증 영상',
     duration: 20,
@@ -43,10 +35,7 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
   } as const;
 
   const completed = {
-    version: 1,
     type: 'complete',
-    filterVersion: 1,
-    speechRegions: [{ start: 1, end: 3 }],
     segments: [{ index: 0, start: 1, end: 3, text: 'Hello world.', words: [] }],
   } as const;
 
@@ -68,11 +57,15 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
       title: '큐 검증',
     });
 
-    await db.manager.insert(Job, { id: jobId, videoId });
+    // DB 시각의 밀리초 반올림으로 새 작업이 미래로 판정되지 않게 한다.
+    await db.manager.insert(Job, {
+      id: jobId,
+      videoId,
+      availableAt: new Date(Date.now() - 1000),
+    });
   });
 
   afterEach(async () => {
-    for (const id of users.splice(0)) await db.manager.delete(User, id);
     await db.manager.delete(Video, videoId);
   });
 
@@ -90,7 +83,6 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
     const result = {
       ...completed,
       segments: [...completed.segments].map((item) => ({ ...item, words: [] })),
-      speechRegions: [...completed.speechRegions],
     };
 
     expect(await queue.complete(job, result)).toBe(true);
@@ -102,23 +94,42 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
     );
   });
 
-  it('다운로드 시각과 분류를 저장하고 오래된 소유권의 갱신은 거부한다', async () => {
+  it('Gemini 구절과 완료 상태를 함께 저장한다', async () => {
     const job = (await queue.claim())!;
 
+    await queue.transcribing(job, metadata);
+
     expect(
-      (await db.manager.findOneByOrFail(Video, { id: videoId })).downloadedAt
-    ).toBeNull();
+      await queue.complete(job, {
+        type: 'complete',
+        segments: [
+          { index: 0, start: 1, end: 3, text: 'Hello world.', words: [] },
+        ],
+      })
+    ).toBe(true);
 
-    await queue.downloaded(job);
-
-    const downloaded = (
+    expect(
       await db.manager.findOneByOrFail(Video, { id: videoId })
-    ).downloadedAt;
+    ).toMatchObject({
+      title: metadata.title,
+      duration: metadata.duration,
+    });
 
-    expect(downloaded).not.toBeNull();
+    expect(await db.manager.findOneByOrFail(Job, { id: jobId })).toMatchObject({
+      status: 'ready',
+      leaseToken: null,
+    });
+
+    expect(
+      await db.manager.findOneByOrFail(Segment, { videoId })
+    ).toMatchObject({ text: 'Hello world.', words: [] });
+  });
+
+  it('영상 정보와 분류를 저장하고 오래된 소유권의 갱신은 거부한다', async () => {
+    const job = (await queue.claim())!;
 
     await expect(
-      queue.downloaded({ ...job, leaseToken: '만료' })
+      queue.transcribing({ ...job, leaseToken: '만료' }, metadata)
     ).rejects.toThrow();
 
     await queue.transcribing(job, metadata);
@@ -126,7 +137,8 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
     expect(
       await db.manager.findOneByOrFail(Video, { id: videoId })
     ).toMatchObject({
-      downloadedAt: downloaded,
+      title: metadata.title,
+      duration: metadata.duration,
       category: '교육',
       youtubeCategoryId: '27',
     });
@@ -149,7 +161,6 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
       await queue.complete(old, {
         ...completed,
         segments: [],
-        speechRegions: [],
       })
     ).toBe(false);
 
@@ -190,11 +201,8 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
 
     await expect(
       queue.complete(job, {
-        version: 1,
         type: 'complete',
-        filterVersion: 1,
         segments: [duplicate, duplicate],
-        speechRegions: [{ start: 0, end: 3 }],
       })
     ).rejects.toThrow();
 
@@ -203,118 +211,5 @@ describe.skipIf(!testUrl)('NestJS 작업 큐와 재검사 DB 통합', () => {
     expect((await db.manager.findOneByOrFail(Job, { id: jobId })).status).toBe(
       'transcribing'
     );
-
-    expect(
-      (await db.manager.findOneByOrFail(Video, { id: videoId })).speechRegions
-    ).toBeNull();
-  });
-
-  it('재검사는 답안과 제출 기록을 보존하며 위치와 완료 상태만 맞춘다', async () => {
-    await db.manager.update(Job, jobId, { status: 'ready' });
-    const segmentIds = Array.from({ length: 4 }, () => randomUUID());
-
-    await db.manager.insert(
-      Segment,
-      segmentIds.map((id, index) => ({
-        id,
-        videoId,
-        index,
-        start: index * 5,
-        end: index * 5 + 2,
-        text: '원본',
-        words: [],
-      }))
-    );
-
-    const progressIds: string[] = [];
-
-    for (const currentIndex of [2, 4]) {
-      const userId = randomUUID();
-      const id = randomUUID();
-
-      users.push(userId);
-      progressIds.push(id);
-      await db.manager.insert(User, { id: userId });
-      await db.manager.insert(Progress, { id, userId, videoId, currentIndex });
-    }
-
-    for (const segmentId of segmentIds) {
-      await db.manager.insert(SegmentState, {
-        progressId: progressIds[0],
-        segmentId,
-        mode: 'full',
-        draft: '답안',
-        status: 'correct',
-      });
-
-      await db.manager.insert(Attempt, {
-        id: randomUUID(),
-        progressId: progressIds[0],
-        segmentId,
-        mode: 'full',
-        answer: '답안',
-        result: { correct: true },
-        correct: true,
-      });
-    }
-
-    const result = {
-      version: 1,
-      type: 'rechecked',
-      filterVersion: 1,
-      speechRegions: [
-        { start: 5, end: 7 },
-        { start: 10, end: 12 },
-      ],
-    } as const;
-
-    expect(
-      await recheck.apply(videoId, {
-        ...result,
-        speechRegions: [...result.speechRegions],
-      })
-    ).toMatchObject({ 제외: 2, 적용: false });
-
-    expect(
-      await db.manager.count(Segment, { where: { videoId, excluded: true } })
-    ).toBe(0);
-
-    await recheck.apply(
-      videoId,
-      { ...result, speechRegions: [...result.speechRegions] },
-      true
-    );
-
-    expect(
-      await recheck.apply(
-        videoId,
-        { ...result, speechRegions: [...result.speechRegions] },
-        true
-      )
-    ).toMatchObject({ 제외: 0 });
-
-    expect(
-      (await db.manager.findOneByOrFail(Progress, { id: progressIds[0] }))
-        .currentIndex
-    ).toBe(1);
-
-    expect(
-      (await db.manager.findOneByOrFail(Progress, { id: progressIds[1] }))
-        .currentIndex
-    ).toBe(2);
-
-    expect(
-      await db.manager.count(SegmentState, {
-        where: { progressId: progressIds[0] },
-      })
-    ).toBe(4);
-
-    expect(
-      await db.manager.count(Attempt, { where: { progressId: progressIds[0] } })
-    ).toBe(4);
-
-    await expect(
-      recheck.apply(videoId, { ...result, speechRegions: [] }, true)
-    ).rejects.toThrow();
   });
 });

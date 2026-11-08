@@ -1,165 +1,143 @@
 import { Injectable } from '@nestjs/common';
+import { z } from 'zod';
+import { ProcessingError, type ProcessorEvent } from './contracts.js';
+import { googleJson } from './google-http.js';
+import { youtubeMetadata } from './youtube-metadata.js';
 import {
-  ProcessingError,
-  processorEventSchema,
-  type ProcessorEvent,
-} from './contracts.js';
+  geminiResponseSchema,
+  parseTranscript,
+  transcriptionPrompt,
+} from './gemini-transcript.js';
 
-/** 별도 음성 처리 서버의 스트림을 검증하고 취소를 HTTP 연결에 전달한다. */
+const responseSchema = z.object({
+  candidates: z
+    .array(
+      z.object({
+        finishReason: z.string(),
+        content: z
+          .object({
+            parts: z.array(
+              z.object({
+                text: z.string().optional(),
+                thought: z.boolean().optional(),
+              })
+            ),
+          })
+          .optional(),
+      })
+    )
+    .optional(),
+});
+
+/** 공식 영상 정보와 Gemini 전사를 작업 큐에 연결한다. */
 @Injectable()
 export class ProcessorService {
   async run(
-    request: { youtubeId: string; operation: 'transcribe' | 'recheck' },
+    request: { youtubeId: string },
     onEvent: (event: ProcessorEvent) => Promise<void>,
     signal?: AbortSignal
   ): Promise<ProcessorEvent> {
-    const url = process.env.PROCESSOR_URL;
-    const token = process.env.PROCESSOR_API_TOKEN;
+    const geminiKey = process.env.GEMINI_API_KEY?.trim();
+    const youtubeKey = process.env.YOUTUBE_API_KEY?.trim();
+    const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 
-    if (!url || !token || token.length < 32) {
+    if (!geminiKey || !youtubeKey || !/^[a-zA-Z0-9._-]+$/.test(model)) {
       throw new ProcessingError(
         'PROCESSOR_CONFIG',
-        '음성 처리 서버 주소와 인증 토큰을 확인해 주세요.'
+        'GEMINI_API_KEY, YOUTUBE_API_KEY와 GEMINI_MODEL 설정을 확인해 주세요.'
       );
     }
 
-    const controller = new AbortController();
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(request.youtubeId)) {
+      throw new ProcessingError(
+        'UNSUPPORTED_VIDEO',
+        '올바른 유튜브 영상 ID가 아닙니다.'
+      );
+    }
 
     const combined = AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(910000),
+      AbortSignal.timeout(900000),
       ...(signal ? [signal] : []),
     ]);
 
-    let idleTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const refreshDeadline = () => {
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => controller.abort(), 30000);
-    };
-
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-    let terminal: ProcessorEvent | undefined;
-    let stage = 'started';
-    let duration = 0;
-    let total = 0;
-
-    const accept = async (line: string) => {
-      if (terminal) throw new Error('종료 이벤트 뒤에 출력이 있습니다.');
-      const event = processorEventSchema.parse(JSON.parse(line));
-
-      if (event.type === 'heartbeat') return;
-      if (event.type === 'error') terminal = event;
-      else if (request.operation === 'recheck' && event.type === 'rechecked')
-        terminal = event;
-      else if (
-        request.operation === 'transcribe' &&
-        event.type === 'downloaded' &&
-        stage === 'started'
-      ) {
-        stage = 'downloaded';
-        await onEvent(event);
-      } else if (
-        request.operation === 'transcribe' &&
-        event.type === 'transcribing' &&
-        stage === 'downloaded'
-      ) {
-        duration = event.duration;
-        stage = 'transcribing';
-        await onEvent(event);
-      } else if (
-        request.operation === 'transcribe' &&
-        event.type === 'complete' &&
-        stage === 'transcribing'
-      ) {
-        if (event.segments.some((segment) => segment.end > duration))
-          throw new Error('영상 길이를 벗어난 구절입니다.');
-        terminal = event;
-      } else throw new Error('처리 이벤트 순서가 올바르지 않습니다.');
-    };
-
     try {
-      refreshDeadline();
+      combined.throwIfAborted();
 
-      const response = await fetch(new URL('/v1/process', url), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+      const metadata = await youtubeMetadata(
+        request.youtubeId,
+        youtubeKey,
+        combined
+      );
+
+      await onEvent({ type: 'transcribing', ...metadata });
+      // DB 상태 저장이나 소유권 확인에 실패하면 유료 분석을 시작하지 않는다.
+      combined.throwIfAborted();
+
+      const raw = await googleJson(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          signal: combined,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiKey,
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    fileData: {
+                      fileUri: `https://www.youtube.com/watch?v=${request.youtubeId}`,
+                    },
+                  },
+                  { text: transcriptionPrompt(metadata.duration) },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseJsonSchema: geminiResponseSchema,
+            },
+          }),
         },
-        body: JSON.stringify({ version: 1, ...request }),
-        signal: combined,
-        redirect: 'error',
-      });
+        'GEMINI'
+      );
 
-      if (!response.ok) {
-        await response.body?.cancel();
-        const retryable = response.status === 429 || response.status >= 500;
+      const candidate = responseSchema.parse(raw).candidates?.[0];
+
+      if (
+        !candidate ||
+        candidate.finishReason !== 'STOP' ||
+        !candidate.content
+      ) {
+        const retryable = candidate?.finishReason === 'MAX_TOKENS';
 
         throw new ProcessingError(
-          response.status === 401 ? 'PROCESSOR_AUTH' : 'PROCESSOR_HTTP',
-          response.status === 401
-            ? '음성 처리 서버 인증에 실패했습니다.'
-            : '음성 처리 서버가 요청을 처리하지 못했습니다.',
+          'GEMINI_INCOMPLETE',
+          'Gemini가 완전한 전사 결과를 반환하지 않았습니다.',
           retryable
         );
       }
 
-      if (
-        !response.body ||
-        !response.headers.get('content-type')?.includes('application/x-ndjson')
-      ) {
-        await response.body?.cancel();
-        throw new Error('음성 처리 응답 형식이 올바르지 않습니다.');
-      }
+      const text = candidate.content.parts
+        .filter((part) => !part.thought)
+        .map((part) => part.text ?? '')
+        .join('');
 
-      reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8', { fatal: true });
-      let buffer = '';
+      const segments = parseTranscript(text, metadata.duration);
 
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-        refreshDeadline();
-        total += value.byteLength;
-        if (total > 8 * 1024 * 1024)
-          throw new Error('처리 결과 크기가 너무 큽니다.');
-        buffer += decoder.decode(value, { stream: true });
-        let index: number;
-
-        while ((index = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, index);
-
-          buffer = buffer.slice(index + 1);
-          await accept(line);
-        }
-      }
-
-      buffer += decoder.decode();
       combined.throwIfAborted();
-      if (buffer || !terminal)
-        throw new Error('처리 결과가 중간에 끊겼습니다.');
-      if (terminal.type === 'error')
-        throw new ProcessingError(
-          terminal.code,
-          terminal.message,
-          terminal.retryable
-        );
 
-      return terminal;
+      return { type: 'complete', segments };
     } catch (error) {
       if (error instanceof ProcessingError) throw error;
       throw new ProcessingError(
         'PROCESSOR_FAILED',
-        '음성 처리 서버 연결 또는 결과 검증에 실패했습니다.',
+        '영상 정보 조회 또는 Gemini 결과 검증에 실패했습니다.',
         true
       );
-    } finally {
-      clearTimeout(idleTimer);
-      // DB 소유권 상실이나 저장 실패도 서버의 진행 중인 분석 취소로 이어진다.
-      controller.abort();
-      await reader?.cancel().catch(() => undefined);
     }
   }
 }

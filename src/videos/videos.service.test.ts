@@ -48,12 +48,11 @@ function setup(ownsVideo = true) {
   };
 }
 
-describe('분리된 음성 처리기의 작업 등록', () => {
+describe('영상 분석 작업 등록', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('API 서버에 음성 인식 키가 없어도 영상 처리 작업을 등록한다', async () => {
-    vi.stubEnv('GROQ_API_KEY', '');
-    vi.stubEnv('QRUQ_WHISPER', '');
+  it('API 서버에 Gemini 키가 없어도 영상 처리 작업을 등록한다', async () => {
+    vi.stubEnv('GEMINI_API_KEY', '');
     const { service, tx } = setup();
     const insert = vi.fn().mockResolvedValue({});
 
@@ -71,9 +70,8 @@ describe('분리된 음성 처리기의 작업 등록', () => {
     expect(insert).toHaveBeenCalledWith(Job, { videoId: 'shared-video' });
   });
 
-  it('API 서버에 음성 인식 키가 없어도 본인 영상의 실패한 작업을 재시도한다', async () => {
-    vi.stubEnv('GROQ_API_KEY', '');
-    vi.stubEnv('QRUQ_WHISPER', '');
+  it('API 서버에 Gemini 키가 없어도 본인 영상의 실패한 작업을 재시도한다', async () => {
+    vi.stubEnv('GEMINI_API_KEY', '');
     const { service, tx } = setup();
 
     await expect(service.retryVideo('me', 'video')).resolves.toEqual({

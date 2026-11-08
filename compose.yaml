@@ -54,11 +54,11 @@ services:
     init: true
     environment:
       DATABASE_URL: postgresql://graduate_me:graduate_me_local@db:5432/graduate_me
-      PROCESSOR_URL: '${PROCESSOR_URL:-http://audio-processor:8000}'
-      PROCESSOR_API_TOKEN: '${PROCESSOR_API_TOKEN:?PROCESSOR_API_TOKEN을 설정하세요}'
+      GEMINI_API_KEY: '${GEMINI_API_KEY:-}'
+      GEMINI_MODEL: '${GEMINI_MODEL:-gemini-3.8-flash}'
+      YOUTUBE_API_KEY: '${YOUTUBE_API_KEY:-}'
     networks:
       - default
-      - processing
     depends_on:
       api:
         condition: service_healthy
@@ -69,6 +69,3 @@ volumes:
 networks:
   app:
     name: graduate-me-app
-  processing:
-    name: graduate-me-processing
-    external: true

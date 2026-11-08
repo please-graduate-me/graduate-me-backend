@@ -1,3 +1,4 @@
+import { RemoveAudioProcessing1794146400000 } from './migrations/1794146400000-remove-audio-processing.js';
 import { NormalizeDefaults1793664000002 } from './migrations/1793664000002-normalize-defaults.js';
 import { Schema1793404800000 } from './migrations/1793404800000-schema.js';
 import { Schema1793408400000 } from './migrations/1793408400000-schema.js';
@@ -19,4 +20,5 @@ export const migrations = [
   Schema1793664000000,
   TypeormDefaults1793664000001,
   NormalizeDefaults1793664000002,
+  RemoveAudioProcessing1794146400000,
 ];

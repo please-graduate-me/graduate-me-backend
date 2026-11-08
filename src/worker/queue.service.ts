@@ -16,7 +16,7 @@ export class QueueService {
       await tx.query(`UPDATE "Job" SET status = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END,
         "leaseToken" = NULL, "heartbeatAt" = NULL, "availableAt" = now() - interval '1 second', "updatedAt" = now(),
         "errorCode" = 'WORKER_INTERRUPTED', "errorMessage" = '처리 작업이 중단되었습니다. 다시 시도해 주세요.'
-        WHERE status IN ('extracting','transcribing') AND "heartbeatAt" < now() - interval '90 seconds'`);
+        WHERE status IN ('preparing','transcribing') AND "heartbeatAt" < now() - interval '90 seconds'`);
 
       const rows: ClaimedJob[] =
         await tx.query(`SELECT j.*, v."youtubeId" FROM "Job" j JOIN "Video" v ON v.id = j."videoId"
@@ -30,7 +30,7 @@ export class QueueService {
       job.attempts += 1;
 
       await tx.update(Job, job.id, {
-        status: 'extracting',
+        status: 'preparing',
         attempts: job.attempts,
         leaseToken: job.leaseToken,
         heartbeatAt: new Date(),
@@ -54,7 +54,7 @@ export class QueueService {
         {
           id: job.id,
           token: job.leaseToken,
-          statuses: ['extracting', 'transcribing'],
+          statuses: ['preparing', 'transcribing'],
         }
       )
       .execute();
@@ -68,19 +68,9 @@ export class QueueService {
       lock: { mode: 'pessimistic_write' },
     });
 
-    return row && ['extracting', 'transcribing'].includes(row.status)
+    return row && ['preparing', 'transcribing'].includes(row.status)
       ? row
       : null;
-  }
-
-  async downloaded(job: ClaimedJob) {
-    return this.db.transaction(async (tx) => {
-      const owned = await this.owned(tx, job);
-
-      if (!owned || owned.status !== 'extracting')
-        throw new Error('작업 소유권이 만료되었습니다.');
-      await tx.update(Video, job.videoId, { downloadedAt: new Date() });
-    });
   }
 
   async transcribing(
@@ -90,7 +80,7 @@ export class QueueService {
     return this.db.transaction(async (tx) => {
       const owned = await this.owned(tx, job);
 
-      if (!owned || owned.status !== 'extracting')
+      if (!owned || owned.status !== 'preparing')
         throw new Error('작업 소유권이 만료되었습니다.');
       await tx.update(Job, job.id, { status: 'transcribing' });
 
@@ -111,12 +101,6 @@ export class QueueService {
       const owned = await this.owned(tx, job);
 
       if (!owned || owned.status !== 'transcribing') return false;
-
-      await tx.update(Video, job.videoId, {
-        speechRegions: event.speechRegions,
-        speechFilterVersion: event.filterVersion,
-        speechCheckedAt: new Date(),
-      });
 
       await tx.insert(
         Segment,

@@ -18,7 +18,7 @@ export class DemoController {
 
     const segments = video
       ? await this.db.manager.find(Segment, {
-          where: { videoId: video.id, excluded: false },
+          where: { videoId: video.id },
           order: { index: 'ASC' },
           take: 10,
           select: { id: true, start: true, end: true, text: true },

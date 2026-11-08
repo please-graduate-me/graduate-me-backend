@@ -1,233 +1,333 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createServer, type RequestListener, type Server } from 'node:http';
-import { once } from 'node:events';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcessorService } from './processor.service.js';
 
-const servers: Server[] = [];
-const downloaded = { version: 1, type: 'downloaded' };
+const request = { youtubeId: 'JnfBXjWm7hc' } as const;
 
-const transcribing = {
-  version: 1,
-  type: 'transcribing',
-  title: '테스트',
-  duration: 3,
-  category: null,
-  youtubeCategoryId: null,
+const metadata = {
+  items: [
+    {
+      snippet: {
+        title: '테스트',
+        categoryId: '27',
+        liveBroadcastContent: 'none',
+      },
+      contentDetails: { duration: 'PT3S' },
+      status: { privacyStatus: 'public', embeddable: true },
+    },
+  ],
 };
 
-const complete = {
-  version: 1,
-  type: 'complete',
-  filterVersion: 1,
-  speechRegions: [{ start: 0, end: 3 }],
-  segments: [{ index: 0, start: 1, end: 2, text: 'Hello', words: [] }],
-};
+const categories = { items: [{ snippet: { title: '교육' } }] };
+const segments = [{ start: 1, end: 2, text: 'Hello.' }];
 
-const request = { operation: 'transcribe', youtubeId: 'JnfBXjWm7hc' } as const;
-const token = 'test-token-'.repeat(4);
-
-async function fixture(handler: RequestListener) {
-  const server = createServer(handler);
-
-  servers.push(server);
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-
-  if (!address || typeof address === 'string')
-    throw new Error('테스트 서버 포트 없음');
-  vi.stubEnv('PROCESSOR_URL', `http://127.0.0.1:${address.port}`);
-  vi.stubEnv('PROCESSOR_API_TOKEN', token);
-
-  return new ProcessorService();
+function result(data: unknown = { segments }, finishReason = 'STOP') {
+  return {
+    candidates: [
+      { finishReason, content: { parts: [{ text: JSON.stringify(data) }] } },
+    ],
+  };
 }
 
-function output(events: unknown[]) {
-  return events.map((event) => JSON.stringify(event) + '\n').join('');
+function fixture(video: unknown = metadata, generated: unknown = result()) {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json(video))
+    .mockResolvedValueOnce(Response.json(categories))
+    .mockResolvedValueOnce(Response.json(generated));
+
+  vi.stubGlobal('fetch', fetch);
+
+  return fetch;
 }
 
-afterEach(async () => {
-  vi.unstubAllEnvs();
-
-  await Promise.all(
-    servers.splice(0).map(
-      (server) =>
-        new Promise<void>((resolve) => {
-          server.close(() => resolve());
-          server.closeAllConnections();
-        })
-    )
-  );
+beforeEach(() => {
+  vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
+  vi.stubEnv('YOUTUBE_API_KEY', 'test-youtube-key');
+  vi.stubEnv('GEMINI_MODEL', 'gemini-3.8-flash');
 });
 
-describe('음성 처리 HTTP 경계', () => {
-  it('인증과 요청을 전달하고 분할 수신한 이벤트를 순서대로 처리한다', async () => {
-    let received = '';
-    let headers: unknown;
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
-    const processor = await fixture((req, res) => {
-      headers = req.headers;
-
-      req.on('data', (chunk) => {
-        received += chunk;
-      });
-
-      req.on('end', () => {
-        res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
-
-        const body = Buffer.from(
-          output([
-            downloaded,
-            { version: 1, type: 'heartbeat' },
-            transcribing,
-            complete,
-          ])
-        );
-
-        const split = body.indexOf(Buffer.from('테스트')) + 1;
-
-        res.write(body.subarray(0, split));
-        setTimeout(() => res.end(body.subarray(split)), 5);
-      });
-    });
-
+describe('Gemini 영상 분석 경계', () => {
+  it('공식 메타데이터 확인 후 URL을 전달하고 검증한 구절을 학습 계약으로 반환한다', async () => {
+    const fetch = fixture();
     const event = vi.fn();
 
-    expect(await processor.run(request, event)).toEqual(complete);
-    expect(JSON.parse(received)).toEqual({ version: 1, ...request });
-    expect(headers).toMatchObject({ authorization: `Bearer ${token}` });
-
-    expect(event.mock.calls.map(([value]) => value.type)).toEqual([
-      'downloaded',
-      'transcribing',
-    ]);
-  });
-
-  it.each([
-    [401, 'PROCESSOR_AUTH', false],
-    [429, 'PROCESSOR_HTTP', true],
-    [503, 'PROCESSOR_HTTP', true],
-  ])('HTTP %s의 재시도 여부를 구별한다', async (status, code, retryable) => {
-    const processor = await fixture((_req, res) => {
-      res.writeHead(status).end();
+    expect(await new ProcessorService().run(request, event)).toEqual({
+      type: 'complete',
+      segments: [{ ...segments[0], index: 0, words: [] }],
     });
 
-    await expect(processor.run(request, vi.fn())).rejects.toMatchObject({
-      code,
-      retryable,
+    expect(event).toHaveBeenCalledExactlyOnceWith({
+      type: 'transcribing',
+      title: '테스트',
+      duration: 3,
+      category: '교육',
+      youtubeCategoryId: '27',
     });
+
+    const [metadataUrl, metadataInit] = fetch.mock.calls[0];
+
+    expect(String(metadataUrl)).toContain(
+      'www.googleapis.com/youtube/v3/videos'
+    );
+
+    expect(String(metadataUrl)).not.toContain('test-youtube-key');
+
+    expect(metadataInit.headers).toEqual({
+      'x-goog-api-key': 'test-youtube-key',
+    });
+
+    const [url, init] = fetch.mock.calls[2];
+    const body = JSON.parse(init.body);
+
+    expect(url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'
+    );
+
+    expect(init.headers['x-goog-api-key']).toBe('test-gemini-key');
+
+    expect(body.contents[0].parts[0]).toEqual({
+      fileData: { fileUri: 'https://www.youtube.com/watch?v=JnfBXjWm7hc' },
+    });
+
+    expect(body.generationConfig.responseMimeType).toBe('application/json');
+
+    expect(body.generationConfig.responseJsonSchema.required).toContain(
+      'segments'
+    );
   });
 
-  it.each([
-    [complete],
-    [
-      downloaded,
-      transcribing,
-      { ...complete, segments: [{ ...complete.segments[0], end: 9 }] },
-    ],
-    [downloaded, transcribing, complete, downloaded],
-    [{ ...downloaded, version: 2 }],
-    [downloaded],
-  ])(
-    '순서·시간·버전 또는 완료 이벤트가 잘못된 응답을 거부한다',
-    async (...events) => {
-      const processor = await fixture((_req, res) => {
-        res
-          .writeHead(200, { 'Content-Type': 'application/x-ndjson' })
-          .end(output(events));
-      });
+  it.each(['GEMINI_API_KEY', 'YOUTUBE_API_KEY'])(
+    '설정 %s가 없으면 외부 API를 호출하지 않는다',
+    async (key) => {
+      const fetch = fixture();
 
-      await expect(processor.run(request, vi.fn())).rejects.toMatchObject({
-        code: 'PROCESSOR_FAILED',
-      });
+      vi.stubEnv(key, '');
+
+      await expect(
+        new ProcessorService().run(request, vi.fn())
+      ).rejects.toMatchObject({ code: 'PROCESSOR_CONFIG', retryable: false });
+
+      expect(fetch).not.toHaveBeenCalled();
     }
   );
 
-  it('처리기의 실패 코드와 재시도 여부를 보존한다', async () => {
-    const processor = await fixture((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/x-ndjson' }).end(
-        output([
-          {
-            version: 1,
-            type: 'error',
-            code: 'NO_SPEECH',
-            message: '말소리 없음',
-            retryable: false,
+  it.each([
+    { items: [] },
+    {
+      items: [
+        {
+          ...metadata.items[0],
+          status: { privacyStatus: 'unlisted', embeddable: true },
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          ...metadata.items[0],
+          status: { privacyStatus: 'public', embeddable: false },
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          ...metadata.items[0],
+          snippet: {
+            ...metadata.items[0].snippet,
+            liveBroadcastContent: 'live',
           },
-        ])
-      );
-    });
-
-    await expect(processor.run(request, vi.fn())).rejects.toMatchObject({
-      code: 'NO_SPEECH',
-      retryable: false,
-    });
-  });
-
-  it('소유권 취소 시 HTTP 연결을 닫아 서버 처리 취소로 전달한다', async () => {
-    let disconnected: Promise<unknown> | undefined;
-
-    const processor = await fixture((_req, res) => {
-      disconnected = once(res, 'close');
-      res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
-      res.write(output([downloaded]));
-    });
-
-    const controller = new AbortController();
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          ...metadata.items[0],
+          contentDetails: {
+            duration: 'PT3S',
+            contentRating: { ytRating: 'ytAgeRestricted' },
+          },
+        },
+      ],
+    },
+  ])('미지원 영상은 유료 분석 전에 거부한다', async (video) => {
+    const fetch = fixture(video);
 
     await expect(
-      processor.run(request, async () => controller.abort(), controller.signal)
-    ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
+      new ProcessorService().run(request, vi.fn())
+    ).rejects.toMatchObject({ code: 'UNSUPPORTED_VIDEO', retryable: false });
 
-    await disconnected;
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('DB 상태 저장 실패 시에도 서버 연결을 닫는다', async () => {
-    let disconnected: Promise<unknown> | undefined;
+  it.each(['PT0S', 'PT15M1S', 'PT1H', 'P1D', 'invalid'])(
+    '잘못되거나 제한을 넘은 영상 길이 %s를 거부한다',
+    async (duration) => {
+      const fetch = fixture({
+        items: [{ ...metadata.items[0], contentDetails: { duration } }],
+      });
 
-    const processor = await fixture((_req, res) => {
-      disconnected = once(res, 'close');
-      res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
-      res.write(output([downloaded]));
-    });
+      await expect(
+        new ProcessorService().run(request, vi.fn())
+      ).rejects.toMatchObject({ code: 'UNSUPPORTED_DURATION' });
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('DB 상태 저장 실패 후 Gemini 호출을 시작하지 않는다', async () => {
+    const fetch = fixture();
 
     await expect(
-      processor.run(request, async () => {
+      new ProcessorService().run(request, async () => {
         throw new Error('DB 실패');
       })
     ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
 
-    await disconnected;
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('종료 JSON이 중간에 잘렸으면 완료로 처리하지 않는다', async () => {
-    const processor = await fixture((_req, res) => {
-      res
-        .writeHead(200, { 'Content-Type': 'application/x-ndjson' })
-        .end(output([downloaded, transcribing]) + '{"version":1');
+  it.each([
+    [{ start: 1, end: 4, text: 'Hello' }],
+    [{ start: 2, end: 1, text: 'Hello' }],
+    [
+      { start: 0, end: 2, text: 'Hello' },
+      { start: 1, end: 3, text: 'World' },
+    ],
+    [
+      { start: 2, end: 3, text: 'Hello' },
+      { start: 0, end: 1, text: 'World' },
+    ],
+  ])('길이·순서·겹침이 잘못된 구절을 저장하지 않는다', async (...invalid) => {
+    fixture(metadata, result({ segments: invalid }));
+
+    await expect(
+      new ProcessorService().run(request, vi.fn())
+    ).rejects.toMatchObject({ code: 'INVALID_TRANSCRIPT', retryable: true });
+  });
+
+  it('영어 발화가 없으면 빈 학습 자료를 완료 처리하지 않는다', async () => {
+    fixture(metadata, result({ segments: [] }));
+
+    await expect(
+      new ProcessorService().run(request, vi.fn())
+    ).rejects.toMatchObject({ code: 'NO_SPEECH', retryable: false });
+  });
+
+  it.each([
+    ['MAX_TOKENS', true],
+    ['SAFETY', false],
+  ])('불완전한 결과 %s를 완료로 처리하지 않는다', async (reason, retryable) => {
+    fixture(metadata, result({ segments }, reason as string));
+
+    await expect(
+      new ProcessorService().run(request, vi.fn())
+    ).rejects.toMatchObject({ code: 'GEMINI_INCOMPLETE', retryable });
+  });
+
+  it('깨진 JSON 응답을 거부한다', async () => {
+    fixture(metadata, {
+      candidates: [
+        { finishReason: 'STOP', content: { parts: [{ text: '{' }] } },
+      ],
     });
 
-    await expect(processor.run(request, vi.fn())).rejects.toMatchObject({
+    await expect(
+      new ProcessorService().run(request, vi.fn())
+    ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
+  });
+
+  it.each([
+    [401, false],
+    [403, false],
+    [429, true],
+    [503, true],
+  ])(
+    'Gemini HTTP %s의 재시도를 구분하고 오류 본문을 감춘다',
+    async (status, retryable) => {
+      const fetch = fixture();
+
+      fetch
+        .mockReset()
+        .mockResolvedValueOnce(Response.json(metadata))
+        .mockResolvedValueOnce(Response.json(categories))
+        .mockResolvedValueOnce(new Response('민감한 외부 오류', { status }));
+
+      await expect(
+        new ProcessorService().run(request, vi.fn())
+      ).rejects.toMatchObject({ code: 'GEMINI_HTTP', retryable });
+    }
+  );
+
+  it('YouTube 오류도 재시도 정책을 적용한다', async () => {
+    const fetch = fixture();
+
+    fetch.mockReset().mockResolvedValueOnce(new Response('', { status: 429 }));
+
+    await expect(
+      new ProcessorService().run(request, vi.fn())
+    ).rejects.toMatchObject({ code: 'YOUTUBE_HTTP', retryable: true });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('소유권 상실을 진행 중인 Gemini 요청 취소로 전달한다', async () => {
+    const fetch = fixture();
+    const controller = new AbortController();
+    let started: (() => void) | undefined;
+
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+
+    fetch
+      .mockReset()
+      .mockResolvedValueOnce(Response.json(metadata))
+      .mockResolvedValueOnce(Response.json(categories))
+      .mockImplementationOnce(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener(
+              'abort',
+              () => reject(init.signal.reason),
+              { once: true }
+            );
+
+            started?.();
+          })
+      );
+
+    const pending = new ProcessorService().run(
+      request,
+      vi.fn(),
+      controller.signal
+    );
+
+    const rejected = expect(pending).rejects.toMatchObject({
       code: 'PROCESSOR_FAILED',
     });
+
+    await ready;
+    controller.abort();
+    await rejected;
   });
 
-  it('재검사도 같은 HTTP 계약으로 반환한다', async () => {
-    const result = {
-      version: 1,
-      type: 'rechecked',
-      filterVersion: 1,
-      speechRegions: [],
-    };
+  it('취소된 작업은 외부 요청을 시작하지 않는다', async () => {
+    const fetch = fixture();
+    const controller = new AbortController();
 
-    const processor = await fixture((_req, res) => {
-      res
-        .writeHead(200, { 'Content-Type': 'application/x-ndjson' })
-        .end(output([result]));
-    });
+    controller.abort();
 
-    expect(
-      await processor.run({ ...request, operation: 'recheck' }, vi.fn())
-    ).toEqual(result);
+    await expect(
+      new ProcessorService().run(request, vi.fn(), controller.signal)
+    ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

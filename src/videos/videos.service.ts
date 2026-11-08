@@ -27,7 +27,6 @@ export class VideosService {
       .leftJoin('v.job', 'j')
       .select('p.videoId', 'videoId')
       .addSelect('v.title', 'title')
-      .addSelect('v.downloadedAt', 'downloadedAt')
       .addSelect('v.category', 'category')
       .addSelect('p.currentIndex', 'currentIndex')
       .addSelect('p.favorite', 'favorite')
@@ -38,11 +37,11 @@ export class VideosService {
         'likeCount'
       )
       .addSelect(
-        '(SELECT count(*)::int FROM "Segment" s WHERE s."videoId" = v.id AND NOT s.excluded)',
+        '(SELECT count(*)::int FROM "Segment" s WHERE s."videoId" = v.id)',
         'count'
       )
       .addSelect(
-        '(SELECT count(*)::int FROM "SegmentDifficulty" d JOIN "Segment" s ON s.id = d."segmentId" WHERE d."progressId" = p.id AND NOT s.excluded)',
+        '(SELECT count(*)::int FROM "SegmentDifficulty" d JOIN "Segment" s ON s.id = d."segmentId" WHERE d."progressId" = p.id)',
         'difficultCount'
       )
       .where('p.userId = :userId AND p.archivedAt IS NULL', { userId })
@@ -50,7 +49,6 @@ export class VideosService {
       .getRawMany<{
         videoId: string;
         title: string;
-        downloadedAt: Date | null;
         category: string | null;
         currentIndex: number;
         favorite: boolean;
@@ -147,11 +145,11 @@ export class VideosService {
 
     const [segments, difficulties, likeCount, liked] = await Promise.all([
       this.db.manager.find(Segment, {
-        where: { videoId, excluded: false },
+        where: { videoId },
         order: { index: 'ASC' },
       }),
       this.db.manager.find(SegmentDifficulty, {
-        where: { progressId: progress.id, segment: { excluded: false } },
+        where: { progressId: progress.id },
       }),
       this.db.manager.count(VideoLike, { where: { videoId } }),
       this.db.manager.exists(VideoLike, { where: { userId, videoId } }),
@@ -167,7 +165,6 @@ export class VideosService {
         youtubeId: video.youtubeId,
         title: video.title,
         duration: video.duration,
-        downloadedAt: video.downloadedAt,
         category: video.category,
         liked,
         likeCount,
@@ -295,7 +292,7 @@ export class VideosService {
       }
 
       const activeSegments = await tx.find(Segment, {
-        where: { videoId, excluded: false },
+        where: { videoId },
         select: { id: true },
         order: { index: 'asc' },
       });
@@ -316,7 +313,7 @@ export class VideosService {
       }
 
       const segment = await tx.findOne(Segment, {
-        where: { id: input.segmentId, videoId, excluded: false },
+        where: { id: input.segmentId, videoId },
       });
 
       if (!segment)

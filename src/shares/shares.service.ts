@@ -23,9 +23,8 @@ export class SharesService {
       .leftJoinAndSelect('link.segment', 'segment')
       .where('link.id = :id AND link.revokedAt IS NULL', { id })
       .andWhere(
-        'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = video.id AND NOT s.excluded)'
+        'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = video.id)'
       )
-      .andWhere('(link.segmentId IS NULL OR segment.excluded = false)')
       .getOne();
 
     if (!link)
@@ -60,7 +59,7 @@ export class SharesService {
         })
         .where('video.id = :id', { id: input.videoId })
         .andWhere(
-          'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = video.id AND NOT s.excluded)'
+          'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = video.id)'
         )
         .getOne();
 
@@ -72,7 +71,7 @@ export class SharesService {
       if (
         input.segmentId &&
         !(await tx.findOne(Segment, {
-          where: { id: input.segmentId, videoId: video.id, excluded: false },
+          where: { id: input.segmentId, videoId: video.id },
         }))
       )
         throw new HttpError(404, '공유할 구절을 찾을 수 없습니다.');
@@ -147,7 +146,7 @@ export class SharesService {
       const link = await this.active(tx, id);
 
       const segments = await tx.find(Segment, {
-        where: { videoId: link.videoId, excluded: false },
+        where: { videoId: link.videoId },
         select: { id: true },
         order: { index: 'asc' },
       });

@@ -64,7 +64,6 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
         end: index * 3 + 2,
         text: 'Hello world.',
         words: [],
-        excluded: index === 1,
       }))
     );
 
@@ -126,7 +125,7 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
       shares.create(outsiderId, { requestId: randomUUID(), videoId })
     ).rejects.toMatchObject({ status: 404 });
 
-    for (const segmentId of [otherSegment, segments[1]])
+    for (const segmentId of [otherSegment])
       await expect(
         shares.create(creatorId, {
           requestId: randomUUID(),
@@ -166,7 +165,7 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
       await db.manager.findOne(Progress, {
         where: { userId: learnerId, videoId },
       })
-    ).toMatchObject({ currentIndex: 1 });
+    ).toMatchObject({ currentIndex: 2 });
 
     expect(
       await db.manager.findOne(Progress, {

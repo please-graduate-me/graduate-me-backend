@@ -1,26 +1,25 @@
 # graduate-me-backend
 
-NestJS API, PostgreSQL 스키마와 마이그레이션, 음성 처리 작업 관리자를 관리합니다. Python 음성 처리는 별도 `audio-processor` 저장소에서 실행합니다.
+NestJS API, PostgreSQL 스키마와 마이그레이션, 영상 분석 작업 관리자를 관리합니다. NestJS worker가 YouTube Data API와 Gemini API를 직접 호출합니다.
 
 ## 저장소 배치
 
 ```text
 codding/
 ├── graduate-me-frontend/
-├── graduate-me-backend/
-└── audio-processor/
+└── graduate-me-backend/
 ```
 
 각 저장소는 자신의 소스와 의존성만으로 설치하고 빌드합니다. 상대 저장소의 코드를 직접 import하지 않습니다. API 계약을 변경하면 양쪽의 타입, 검증, 사용처를 함께 확인합니다.
 
 ## 로컬 개발
 
-실행 순서는 `audio-processor` → `graduate-me-backend` → `graduate-me-frontend`입니다. Python 처리기는 자신의 README에 따라 먼저 실행합니다. 백엔드가 `graduate-me-app` 네트워크를 만들고 프론트엔드가 여기에 연결됩니다. 백엔드 작업 관리자는 처리기의 `graduate-me-processing` 네트워크에도 연결됩니다.
+백엔드 → 프론트엔드 순서로 실행합니다. 백엔드가 `graduate-me-app` 네트워크를 만들고 프론트엔드가 여기에 연결됩니다. 통합 실행은 `../graduate-me-infra`에서 관리합니다.
 
 ```sh
 pnpm install --frozen-lockfile
 cp .env.example .env
-# .env에 인증 설정과 audio-processor와 같은 PROCESSOR_API_TOKEN을 입력합니다.
+# .env에 인증 설정, GEMINI_API_KEY와 YOUTUBE_API_KEY를 입력합니다.
 pnpm dev
 ```
 
@@ -72,6 +71,14 @@ docker compose -f compose.test.yaml up --build --abort-on-container-exit --exit-
 docker compose -f compose.test.yaml down
 ```
 
-`TEST_DATABASE_URL`이 없으면 DB 통합 테스트는 건너뜁니다. Python 테스트는 `../audio-processor`에서 별도로 실행합니다.
+`TEST_DATABASE_URL`이 없으면 DB 통합 테스트는 건너뜁니다. 외부 API는 단위 테스트에서 대체합니다.
 
-`PROCESSOR_URL`의 기본값은 `http://audio-processor:8000`입니다. 양쪽 `.env`의 `PROCESSOR_API_TOKEN`을 맞춰야 합니다. 작업 관리자는 `POST /v1/process`로 처리 요청을 보내고 JSONL 진행 이벤트와 결과를 받아 DB에 저장합니다. Python 서버는 DB에 접근하지 않습니다.
+worker에만 `GEMINI_API_KEY`, `YOUTUBE_API_KEY`, `GEMINI_MODEL`을 주입합니다. YouTube Data API v3를 활성화해야 하며 모델 기본값은 `gemini-3.8-flash`입니다. 사용할 수 있는 모델은 키와 프로젝트에 따라 확인하고 환경변수로 변경합니다. 키는 브라우저와 API 컨테이너에 전달하지 않습니다.
+
+worker는 공식 영상 메타데이터로 공개 여부, 임베드 가능 여부와 15분 제한을 확인한 뒤 Gemini에 유튜브 URL과 JSON 전사 요청을 보냅니다. 구절 시간·순서·텍스트를 검증하고 성공 결과만 기존 Segment 테이블에 저장합니다. 외부 API의 429·5xx, 통신 실패와 잘못된 출력은 기존 최대 3회 재시도를 사용합니다. 실행 중 취소와 15분 타임아웃도 전달합니다. 취소 전에 공급자가 처리한 요청은 과금될 수 있습니다.
+
+이번 연결은 기존 영어 받아쓰기 계약을 유지합니다. 번역·문맥 설명·다국어 채점·계정별 분석 한도는 포함하지 않습니다. 단어별 정렬 정보는 생성하지 않으며 `words`는 빈 배열입니다.
+
+실제 전사 정확도와 구절 반복 재생의 시간 정밀도, 처리 시간과 비용은 키를 설정한 뒤 실제 영상으로 확인해야 합니다. JSON 검증만으로 실제 발화와의 일치를 보장하지 않습니다.
+
+공식 문서: [Gemini 유튜브 영상 입력](https://ai.google.dev/gemini-api/docs/video-understanding#youtube), [구조화된 출력](https://ai.google.dev/gemini-api/docs/structured-output), [YouTube 영상 메타데이터](https://developers.google.com/youtube/v3/docs/videos).

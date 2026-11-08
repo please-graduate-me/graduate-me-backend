@@ -14,8 +14,6 @@ export interface Segment {
   end: number;
   text: string;
   words: { word: string; start: number; end: number }[];
-  excluded: boolean;
-  exclusionReason: string | null;
   video: Video;
   states: SegmentState[];
   attempts: Attempt[];
@@ -39,8 +37,6 @@ export const Segment = new EntitySchema<Segment>({
     end: { type: 'double precision' },
     text: { type: 'text' },
     words: { type: 'jsonb' },
-    excluded: { type: 'boolean', default: false },
-    exclusionReason: { type: 'text', nullable: true },
   },
   relations: {
     video: {

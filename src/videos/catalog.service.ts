@@ -13,9 +13,7 @@ export class CatalogService {
       .getRepository(Video)
       .createQueryBuilder('v')
       .innerJoin('v.job', 'j', 'j.status = :status', { status: 'ready' })
-      .where(
-        'EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = v.id AND NOT s.excluded)'
-      );
+      .where('EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = v.id)');
   }
   async list(query: PublicVideoQuery) {
     const builder = this.available()
@@ -24,7 +22,6 @@ export class CatalogService {
       .addSelect('v.title', 'title')
       .addSelect('v.duration', 'duration')
       .addSelect('v.category', 'category')
-      .addSelect('v.downloadedAt', 'downloadedAt')
       .addSelect(
         '(SELECT count(*)::int FROM "VideoLike" l WHERE l."videoId" = v.id)',
         'likeCount'
@@ -48,7 +45,6 @@ export class CatalogService {
         title: string;
         duration: number | null;
         category: string | null;
-        downloadedAt: Date | null;
         likeCount: number;
       }>();
 

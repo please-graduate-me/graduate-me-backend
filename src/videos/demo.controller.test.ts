@@ -45,7 +45,7 @@ describe('공개 체험의 조회 범위', () => {
     );
 
     expect(find).toHaveBeenCalledWith(Segment, {
-      where: { videoId: 'demo', excluded: false },
+      where: { videoId: 'demo' },
       order: { index: 'ASC' },
       take: 10,
       select: { id: true, start: true, end: true, text: true },
