@@ -4,7 +4,7 @@ services:
     build:
       context: '.'
       dockerfile: Dockerfile.dev
-    command: sh -c "pnpm db:migrate && pnpm db:seed && pnpm dev:app"
+    command: sh -c "pnpm db:migrate && pnpm dev:app"
     develop:
       watch:
         - action: sync+restart

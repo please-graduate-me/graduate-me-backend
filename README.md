@@ -60,7 +60,6 @@ DB 작업도 실행 중인 API 컨테이너에서 수행합니다.
 
 ```sh
 docker compose exec api pnpm db:migrate
-docker compose exec api pnpm db:seed
 docker compose restart worker
 ```
 
@@ -82,3 +81,5 @@ worker는 공식 영상 메타데이터로 공개 여부, 임베드 가능 여�
 실제 전사 정확도와 구절 반복 재생의 시간 정밀도, 처리 시간과 비용은 키를 설정한 뒤 실제 영상으로 확인해야 합니다. JSON 검증만으로 실제 발화와의 일치를 보장하지 않습니다.
 
 공식 문서: [Gemini 유튜브 영상 입력](https://ai.google.dev/gemini-api/docs/video-understanding#youtube), [구조화된 출력](https://ai.google.dev/gemini-api/docs/structured-output), [YouTube 영상 메타데이터](https://developers.google.com/youtube/v3/docs/videos).
+
+API 시작 시 DB 마이그레이션만 적용하며 영상·분석 작업·데모 자료를 자동 등록하지 않습니다. 데모 자료는 별도로 준비해 DB에 넣습니다. API 서버와 worker는 같은 백엔드의 별도 프로세스이며, worker는 등록된 분석 작업만 처리합니다.

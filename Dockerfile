@@ -6,4 +6,4 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 EXPOSE 4000
-CMD ["sh", "-c", "pnpm db:migrate && pnpm db:seed && pnpm start"]
+CMD ["sh", "-c", "pnpm db:migrate && pnpm start"]

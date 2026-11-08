@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "db:generate": "node --import tsx ./node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts",
     "db:migrate": "tsx src/database/migrate.ts",
-    "db:seed": "tsx src/database/seed.ts",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "prettier . --write",
