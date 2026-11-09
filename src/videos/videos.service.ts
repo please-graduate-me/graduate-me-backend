@@ -1,4 +1,5 @@
-import { DataSource, MoreThan } from 'typeorm';
+import { materialPolicy } from '../learning/material-policy.js';
+import { DataSource, MoreThanOrEqual } from 'typeorm';
 import { Video } from '../database/entities/Video.entity.js';
 import { SegmentState } from '../database/entities/SegmentState.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
@@ -121,17 +122,14 @@ export class VideosService {
       if (!video) {
         this.requireTranscriptionEnabled();
 
-        const limit = Math.max(
-          1,
-          Math.min(100, Number(process.env.VIDEO_DAILY_LIMIT) || 10)
-        );
+        const limit = materialPolicy().video.dailyNewLimit;
 
         const today = new Date();
 
         today.setUTCHours(0, 0, 0, 0);
         if (
           (await tx.count(Video, {
-            where: { ownerId: userId, createdAt: MoreThan(today) },
+            where: { ownerId: userId, createdAt: MoreThanOrEqual(today) },
           })) >= limit
         )
           throw new HttpError(

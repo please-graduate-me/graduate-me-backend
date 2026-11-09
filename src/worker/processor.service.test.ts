@@ -34,7 +34,7 @@ const metadata = {
 };
 
 const categories = { items: [{ snippet: { title: '교육' } }] };
-const segments = [{ start: 1, end: 2, text: 'Hello.' }];
+const segments = [{ start: 1, end: 2, text: 'Hello there.' }];
 
 function result(data: unknown = { segments }, finishReason = 'STOP') {
   return {
@@ -69,6 +69,33 @@ afterEach(() => {
 });
 
 describe('Gemini 영상 분석 경계', () => {
+  it('MVP 길이 초과 영상은 유료 전사 전에 차단한다', async () => {
+    vi.stubEnv('MATERIAL_POLICY_PROFILE', 'mvp');
+
+    const fetch = fixture({
+      items: [
+        { ...metadata.items[0], contentDetails: { duration: 'PT10M1S' } },
+      ],
+    });
+
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'UNSUPPORTED_DURATION',
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['한국어로만 작성된 문장입니다.', '1234 !?...'])(
+    '학습할 선택 언어가 없는 전사를 후속 준비에 넘기지 않는다: %s',
+    async (text) => {
+      fixture(metadata, result({ segments: [{ start: 1, end: 2, text }] }));
+
+      await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+        code: 'UNSUITABLE_LEARNING_MATERIAL',
+      });
+    }
+  );
+
   it('전사를 끄면 키가 있어도 메타데이터와 모델을 호출하지 않는다', async () => {
     vi.stubEnv('VIDEO_TRANSCRIPTION_PROVIDER', 'disabled');
     const fetch = fixture();

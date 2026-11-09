@@ -1,3 +1,7 @@
+import {
+  assessLearningText,
+  assertLearningEligibility,
+} from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { z } from 'zod';
@@ -84,6 +88,13 @@ export class VideoPreparationService {
       if (!acquired.affected) continue;
 
       try {
+        assertLearningEligibility(
+          assessLearningText(
+            segments.map((segment) => segment.text).join(' '),
+            video.language
+          )
+        );
+
         for (const [batchIndex, batch] of batches(segments).entries()) {
           signal.throwIfAborted();
           await this.generateBatch(video, batch, stage, batchIndex, signal);

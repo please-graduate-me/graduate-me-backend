@@ -29,6 +29,9 @@ export type Grade = z.infer<typeof gradeSchema>;
 export const registerVideoSchema = z.object({
   url: z.string().max(2048),
   language: z.enum(['en', 'th']).default('en'),
+  learningPurposeConfirmed: z.literal(true, {
+    error: '언어 학습 목적으로 사용할 자료임을 확인해 주세요.',
+  }),
 });
 
 /** 좋아요 재전송으로 상태가 반전되지 않도록 원하는 값을 받는다. */

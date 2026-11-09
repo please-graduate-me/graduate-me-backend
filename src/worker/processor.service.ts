@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UsageService } from '../ai/usage.service.js';
 import { z } from 'zod';
+import { materialPolicy } from '../learning/material-policy.js';
 import { ProcessingError, type ProcessorEvent } from './contracts.js';
 import { googleJson } from './google-http.js';
 import { youtubeMetadata } from './youtube-metadata.js';
@@ -101,6 +102,13 @@ export class ProcessorService {
       // DB 상태 저장이나 소유권 확인에 실패하면 유료 분석을 시작하지 않는다.
       combined.throwIfAborted();
 
+      const prompt = transcriptionPrompt(
+        metadata.duration,
+        request.language ?? 'en'
+      );
+
+      const outputLimit = materialPolicy().profile === 'mvp' ? 8192 : 32768;
+
       const segments = await this.usage.execute(
         {
           ownerId: request.ownerId ?? null,
@@ -108,7 +116,12 @@ export class ProcessorService {
           task: 'video_transcription',
           model,
           sourceKey: `video:${request.videoId ?? request.youtubeId}:${request.language ?? 'en'}`,
-          reservedOutputTokens: 32768,
+          // 영상·오디오 입력도 함께 예약해 짧은 영상의 토큰 비용이 한도를 우회하지 않게 한다.
+          estimatedInputTokens: Math.ceil(
+            metadata.duration * 300 +
+              (prompt.length + JSON.stringify(geminiResponseSchema).length) / 2
+          ),
+          reservedOutputTokens: outputLimit,
         },
         async (recordUsage) => {
           const raw = await googleJson(
@@ -131,10 +144,7 @@ export class ProcessorService {
                         },
                       },
                       {
-                        text: transcriptionPrompt(
-                          metadata.duration,
-                          request.language ?? 'en'
-                        ),
+                        text: prompt,
                       },
                     ],
                   },
@@ -142,7 +152,7 @@ export class ProcessorService {
                 generationConfig: {
                   responseMimeType: 'application/json',
                   responseJsonSchema: geminiResponseSchema,
-                  maxOutputTokens: 32768,
+                  maxOutputTokens: outputLimit,
                 },
               }),
             },
@@ -186,7 +196,11 @@ export class ProcessorService {
             .map((part) => part.text ?? '')
             .join('');
 
-          const segments = parseTranscript(text, metadata.duration);
+          const segments = parseTranscript(
+            text,
+            metadata.duration,
+            request.language ?? 'en'
+          );
 
           return {
             value: segments,

@@ -1,3 +1,4 @@
+import { assessLearningText } from '../learning/material-policy.js';
 import { z } from 'zod';
 import { ProcessingError } from './contracts.js';
 
@@ -49,7 +50,11 @@ JSON에는 segments 배열과 각 구절의 start, end, text만 넣으세요.`;
 }
 
 /** 검증된 구절을 학습 계약에 맞추고 없는 단어 정렬 정보는 비워 둔다. */
-export function parseTranscript(text: string, duration: number) {
+export function parseTranscript(
+  text: string,
+  duration: number,
+  language: 'en' | 'th' = 'en'
+) {
   const { segments } = geminiTranscriptSchema.parse(JSON.parse(text));
 
   if (!segments.length)
@@ -72,6 +77,17 @@ export function parseTranscript(text: string, duration: number) {
       true
     );
   }
+
+  const eligibility = assessLearningText(
+    segments.map((segment) => segment.text).join(' '),
+    language
+  );
+
+  if (!eligibility.aiAllowed)
+    throw new ProcessingError(
+      'UNSUITABLE_LEARNING_MATERIAL',
+      eligibility.reason
+    );
 
   return segments.map((segment, index) => ({ ...segment, index, words: [] }));
 }

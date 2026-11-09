@@ -1,3 +1,4 @@
+import { materialPolicy } from '../learning/material-policy.js';
 import { z } from 'zod';
 import { ProcessingError } from './contracts.js';
 import { googleJson } from './google-http.js';
@@ -68,10 +69,12 @@ export async function youtubeMetadata(
       Number(match[3] ?? 0)
     : 0;
 
-  if (duration <= 0 || duration > 1800) {
+  const maximum = materialPolicy().video.maxSeconds;
+
+  if (duration <= 0 || duration > maximum) {
     throw new ProcessingError(
       'UNSUPPORTED_DURATION',
-      '30분 이하의 영상만 지원합니다.'
+      `${maximum / 60}분 이하의 영상만 지원합니다.`
     );
   }
 
