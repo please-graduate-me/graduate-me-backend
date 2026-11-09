@@ -24,13 +24,21 @@ export class SharesController {
     return this.shares.create(request.userId, createShareSchema.parse(body));
   }
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.shares.get(id);
+  get(@Req() request: UserRequest, @Param('id') id: string) {
+    return this.shares.get(id, request.userId);
   }
   @Post(':id/visits')
   @HttpCode(200)
-  visit(@Param('id') id: string, @Body() body: unknown) {
-    return this.shares.visit(id, shareVisitSchema.parse(body).visitId);
+  visit(
+    @Req() request: UserRequest,
+    @Param('id') id: string,
+    @Body() body: unknown
+  ) {
+    return this.shares.visit(
+      id,
+      shareVisitSchema.parse(body).visitId,
+      request.userId
+    );
   }
   @Post(':id/start')
   @HttpCode(200)

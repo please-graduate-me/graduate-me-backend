@@ -6,13 +6,14 @@ import { ShareLink } from '../database/entities/ShareLink.entity.js';
 import { ShareVisit } from '../database/entities/ShareVisit.entity.js';
 import { ShareStart } from '../database/entities/ShareStart.entity.js';
 import { Inject, Injectable } from '@nestjs/common';
+import { requireReadableVideo } from '../videos/access.js';
 import { HttpError } from '../common/http-error.js';
 
 @Injectable()
 /** 공유 자료와 방문 집계를 개인 학습 기록에서 분리한다. */
 export class SharesService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
-  private async active(tx: EntityManager, id: string) {
+  private async active(tx: EntityManager, id: string, userId: string) {
     const link = await tx
       .getRepository(ShareLink)
       .createQueryBuilder('link')
@@ -32,6 +33,8 @@ export class SharesService {
         404,
         '공유 링크가 없거나 더 이상 사용할 수 없습니다.'
       );
+
+    await requireReadableVideo({ manager: tx }, userId, link.videoId);
 
     return link;
   }
@@ -68,6 +71,8 @@ export class SharesService {
           409,
           '학습 준비가 완료된 영상만 공유할 수 있습니다.'
         );
+      // 과거 진도가 남아 있어도 현재 원본 권한을 잃은 계정은 다시 공유할 수 없다.
+      await requireReadableVideo({ manager: tx }, userId, video.id);
       if (
         input.segmentId &&
         !(await tx.findOne(Segment, {
@@ -100,8 +105,8 @@ export class SharesService {
       return { id: input.requestId, path: `/share/${input.requestId}` };
     });
   }
-  async get(id: string) {
-    const { video, segment } = await this.active(this.db.manager, id);
+  async get(id: string, userId: string) {
+    const { video, segment } = await this.active(this.db.manager, id, userId);
 
     return {
       id,
@@ -117,13 +122,13 @@ export class SharesService {
         : null,
     };
   }
-  async visit(id: string, visitId: string) {
+  async visit(id: string, visitId: string, userId: string) {
     return this.db.transaction(async (tx) => {
       await tx.query('SELECT id FROM "ShareLink" WHERE id = $1 FOR SHARE', [
         id,
       ]);
 
-      await this.active(tx, id);
+      await this.active(tx, id, userId);
 
       await tx
         .createQueryBuilder()
@@ -143,7 +148,7 @@ export class SharesService {
         id,
       ]);
 
-      const link = await this.active(tx, id);
+      const link = await this.active(tx, id, userId);
 
       const segments = await tx.find(Segment, {
         where: { videoId: link.videoId },

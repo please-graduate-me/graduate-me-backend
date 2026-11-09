@@ -115,11 +115,19 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
       await db.manager.count(ShareLink, { where: { id: requestId } })
     ).toBe(1);
 
-    const result = sharedLessonSchema.parse(await shares.get(requestId));
+    const result = sharedLessonSchema.parse(
+      await shares.get(requestId, learnerId)
+    );
 
     expect(result.segment).toEqual({ id: segments[2], start: 6, end: 8 });
-    expect(await shares.get(requestId)).not.toHaveProperty('creator');
-    expect(await shares.get(requestId)).not.toHaveProperty('progress');
+
+    expect(await shares.get(requestId, learnerId)).not.toHaveProperty(
+      'creator'
+    );
+
+    expect(await shares.get(requestId, learnerId)).not.toHaveProperty(
+      'progress'
+    );
 
     await expect(
       shares.create(outsiderId, { requestId: randomUUID(), videoId })
@@ -149,7 +157,11 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
       segmentId: segments[2],
     });
 
-    await Promise.all([shares.visit(id, visitId), shares.visit(id, visitId)]);
+    await Promise.all([
+      shares.visit(id, visitId, learnerId),
+      shares.visit(id, visitId, learnerId),
+    ]);
+
     await shares.start(learnerId, id, visitId);
     await shares.start(learnerId, id, visitId);
 
@@ -213,12 +225,17 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
     const id = randomUUID();
 
     await shares.create(creatorId, { requestId: id, videoId });
-    await shares.visit(id, randomUUID());
+    await shares.visit(id, randomUUID(), learnerId);
     await admin.revoke(id);
     await admin.revoke(id);
-    await expect(shares.get(id)).rejects.toMatchObject({ status: 404 });
 
-    await expect(shares.visit(id, randomUUID())).rejects.toMatchObject({
+    await expect(shares.get(id, learnerId)).rejects.toMatchObject({
+      status: 404,
+    });
+
+    await expect(
+      shares.visit(id, randomUUID(), learnerId)
+    ).rejects.toMatchObject({
       status: 404,
     });
 
@@ -231,6 +248,67 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
     );
   });
 
+  it('공유 링크도 현재 원본 ACL을 적용하며 허가된 수신자의 학습은 유지한다', async () => {
+    const id = randomUUID();
+
+    await shares.create(creatorId, { requestId: id, videoId });
+    await shares.visit(id, randomUUID(), creatorId);
+
+    try {
+      for (const visibility of ['private', 'accounts'] as const) {
+        await db.manager.update(
+          Video,
+          { id: videoId },
+          {
+            visibility,
+            ownerId: creatorId,
+            allowedUserIds: [learnerId],
+          }
+        );
+
+        await expect(shares.get(id, outsiderId)).rejects.toMatchObject({
+          status: 404,
+        });
+
+        await expect(
+          shares.visit(id, randomUUID(), outsiderId)
+        ).rejects.toMatchObject({ status: 404 });
+
+        await expect(
+          shares.start(outsiderId, id, randomUUID())
+        ).rejects.toMatchObject({ status: 404 });
+
+        expect((await shares.get(id, creatorId)).video.id).toBe(videoId);
+      }
+
+      expect((await shares.get(id, learnerId)).video.id).toBe(videoId);
+      await shares.start(learnerId, id, randomUUID());
+      await shares.create(learnerId, { requestId: randomUUID(), videoId });
+
+      await db.manager.update(
+        Video,
+        { id: videoId },
+        { visibility: 'private' }
+      );
+
+      await expect(
+        shares.create(learnerId, { requestId: randomUUID(), videoId })
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(await db.manager.countBy(ShareVisit, { shareId: id })).toBe(2);
+
+      expect(
+        await db.manager.countBy(Progress, { userId: outsiderId, videoId })
+      ).toBe(0);
+    } finally {
+      await db.manager.update(
+        Video,
+        { id: videoId },
+        { visibility: 'public', ownerId: null, allowedUserIds: [] }
+      );
+    }
+  });
+
   it('공유자 탈퇴 후에도 공용 링크와 방문 집계를 유지한다', async () => {
     const removedId = randomUUID(),
       id = randomUUID();
@@ -239,14 +317,14 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
     await db.manager.insert(Progress, { userId: removedId, videoId });
 
     await shares.create(removedId, { requestId: id, videoId });
-    await shares.visit(id, randomUUID());
+    await shares.visit(id, randomUUID(), learnerId);
     await db.manager.delete(User, { id: removedId });
 
     expect(
       (await db.manager.findOne(ShareLink, { where: { id } }))?.creatorId
     ).toBeNull();
 
-    expect((await shares.get(id)).video.id).toBe(videoId);
+    expect((await shares.get(id, learnerId)).video.id).toBe(videoId);
 
     expect(await db.manager.count(ShareVisit, { where: { shareId: id } })).toBe(
       1
