@@ -4,6 +4,7 @@ import Google from '@auth/express/providers/google';
 import { typeormAdapter } from './typeorm-adapter.js';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
+import { authRedirect } from './origins.js';
 
 @Injectable()
 /** 세션과 OAuth 설정이 여러 API에서 다르게 적용되지 않게 한다. */
@@ -32,6 +33,9 @@ export class AuthService {
         error: (error) => this.logger.error(error.name),
       },
       callbacks: {
+        redirect({ url, baseUrl }) {
+          return authRedirect(url, baseUrl);
+        },
         session({ session, user }) {
           return { ...session, user: { ...session.user, id: user.id } };
         },

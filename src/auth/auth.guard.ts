@@ -7,6 +7,7 @@ import {
 import type { Request } from 'express';
 import { AuthService } from './auth.service.js';
 import { HttpError } from '../common/http-error.js';
+import { appOrigins } from './origins.js';
 
 /** 사용자 식별자는 클라이언트 입력 대신 인증 가드가 보장한다. */
 export type UserRequest = Request & { userId: string };
@@ -22,10 +23,10 @@ export class AuthGuard implements CanActivate {
     if (!session?.user?.id) throw new HttpError(401, '로그인이 필요합니다.');
 
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
-      const origin = new URL(process.env.AUTH_URL || 'http://localhost:3000')
-        .origin;
-
-      if (request.headers.origin !== origin)
+      if (
+        !request.headers.origin ||
+        !appOrigins().includes(request.headers.origin)
+      )
         throw new HttpError(403, '요청 출처를 확인할 수 없습니다.');
     }
 
