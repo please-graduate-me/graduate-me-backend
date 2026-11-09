@@ -1,3 +1,4 @@
+import { assertLearningEligibility } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { z } from 'zod';
@@ -63,9 +64,16 @@ export class PracticeService {
     if (input.source) {
       const resolved = await this.sources.context(ownerId, input.source);
 
+      assertLearningEligibility(resolved.eligibility);
       source = resolved.source;
       context = resolved.context;
     } else if (expressions.length) {
+      for (const expression of expressions) {
+        const resolved = await this.sources.context(ownerId, expression.source);
+
+        assertLearningEligibility(resolved.eligibility);
+      }
+
       source = expressions[0].source;
 
       context = expressions
@@ -352,6 +360,10 @@ export class PracticeService {
     let feedback: string | null = null;
 
     if (payload.type === 'free_response') {
+      assertLearningEligibility(
+        (await this.sources.context(ownerId, row.source)).eligibility
+      );
+
       this.ai.ensureConfigured();
       const preferences = await this.ai.preferences(ownerId);
 

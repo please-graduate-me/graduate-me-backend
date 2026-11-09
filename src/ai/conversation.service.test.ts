@@ -79,6 +79,11 @@ it.each([
           source,
           context: '문맥',
           contextDescription: '선택 원문',
+          eligibility: {
+            status: 'eligible',
+            aiAllowed: true,
+            reason: '모의 적합 자료',
+          },
         }),
       } as unknown as SourceService,
       ai as unknown as LearningAIService,

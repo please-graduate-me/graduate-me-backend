@@ -1,3 +1,4 @@
+import { assessLearningText } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, LessThan, MoreThan } from 'typeorm';
 import type { z } from 'zod';
@@ -56,6 +57,7 @@ export class OcrService {
   ) {}
   private dto(language: 'en' | 'th', row: MaterialOcrPage | null) {
     const identity = this.provider.identity();
+    const item = pageDto(row);
 
     return {
       provider: identity.provider,
@@ -63,7 +65,15 @@ export class OcrService {
       configured: identity.configured,
       supportedLanguages: identity.supportedLanguages,
       languageSupported: identity.supportedLanguages.includes(language),
-      item: pageDto(row),
+      item: item
+        ? {
+            ...item,
+            eligibility:
+              item.status === 'ready'
+                ? assessLearningText(item.text, language)
+                : undefined,
+          }
+        : null,
     };
   }
   private async stopAbandoned() {

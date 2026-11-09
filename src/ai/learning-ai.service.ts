@@ -1,3 +1,7 @@
+import {
+  assertLearningEligibility,
+  assessLearningText,
+} from '../learning/material-policy.js';
 import { MaterialOcrPage } from '../database/entities/MaterialOcrPage.entity.js';
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
@@ -214,6 +218,7 @@ export class LearningAIService {
     });
 
     if (existing) return this.artifacts.dto(existing);
+    assertLearningEligibility(context.eligibility);
     this.ensureConfigured(input.image ? 'image' : 'text');
 
     return this.operations.run(
@@ -301,6 +306,25 @@ export class LearningAIService {
         400,
         `원문 범위 안에서 한 번에 ${limit}페이지 이하로 준비해 주세요.`
       );
+
+    const ocrPages = await this.db.manager.findBy(MaterialOcrPage, {
+      materialId: id,
+      version: material.version,
+      status: 'ready',
+    });
+
+    const textAt = (page: number) =>
+      ocrPages.find((row) => row.page === page)?.text ??
+      material.pages[page - 1];
+
+    const rangeEligibility = Array.from(
+      { length: input.toPage - input.fromPage + 1 },
+      (_, index) =>
+        assessLearningText(textAt(input.fromPage + index), material.language)
+    );
+
+    if (!rangeEligibility.some((eligibility) => eligibility.aiAllowed))
+      assertLearningEligibility(rangeEligibility[0]);
     this.ensureConfigured();
 
     return this.operations.run(
@@ -319,20 +343,12 @@ export class LearningAIService {
           failed: { page: number; error: string }[] = [];
 
         for (let page = input.fromPage; page <= input.toPage; page++) {
-          const ocr = await this.db.manager.findOneBy(MaterialOcrPage, {
-            materialId: id,
-            version: material.version,
-            page,
-            status: 'ready',
-          });
+          const ocr = ocrPages.find((row) => row.page === page);
+          const quote = textAt(page).trim();
+          const eligibility = assessLearningText(quote, material.language);
 
-          const quote = (ocr?.text ?? material.pages[page - 1]).trim();
-
-          if (!quote) {
-            failed.push({
-              page,
-              error: '추출 가능한 텍스트가 없는 페이지입니다.',
-            });
+          if (!eligibility.aiAllowed) {
+            failed.push({ page, error: eligibility.reason });
 
             continue;
           }

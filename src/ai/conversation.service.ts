@@ -1,3 +1,4 @@
+import { assertLearningEligibility } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
@@ -129,8 +130,10 @@ export class ConversationService {
         model: this.ai.provider.identity().model,
       },
       async () => {
-        const { source, context, contextDescription } =
+        const { source, context, contextDescription, eligibility } =
           await this.sources.context(ownerId, row.source);
+
+        assertLearningEligibility(eligibility);
 
         const historyRows = await this.db.manager.find(AIMessage, {
           where: { conversationId: id },

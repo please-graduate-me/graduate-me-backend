@@ -1,3 +1,4 @@
+import { assessLearningText } from './material-policy.js';
 import { MaterialOcrPage } from '../database/entities/MaterialOcrPage.entity.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
@@ -206,6 +207,7 @@ export class SourceService {
 
         return {
           source,
+          eligibility: assessLearningText(ocr.text, source.language),
           contextDescription: `PDF v${source.version} · ${source.page}페이지 OCR 인식 결과와 인접 페이지 원본 추출 텍스트 · 최대 24000자`,
           context:
             `[선택 페이지 OCR 인식 결과, 원본 대조 필요]\n${ocr.text.slice(0, 16000)}\n${adjacent.slice(0, 8000)}`.slice(
@@ -217,6 +219,10 @@ export class SourceService {
 
       return {
         source,
+        eligibility: assessLearningText(
+          material.pages[source.page - 1],
+          source.language
+        ),
         contextDescription: `PDF v${source.version} · ${Math.max(1, source.page - 1)}~${Math.min(material.pages.length, source.page + 1)}페이지 · 최대 24000자`,
         context: material.pages
           .slice(
@@ -241,6 +247,10 @@ export class SourceService {
 
       return {
         source,
+        eligibility: assessLearningText(
+          String(revision?.payload.text ?? source.quote),
+          source.language
+        ),
         context: String(revision?.payload.text ?? source.quote).slice(0, 24000),
         contextDescription: `보존된 선택 구절 v${source.version} 원문(현재 버전의 인접 구절 제외)`,
       };
@@ -261,6 +271,10 @@ export class SourceService {
 
     return {
       source,
+      eligibility: assessLearningText(
+        segment?.text ?? source.quote,
+        source.language
+      ),
       contextDescription: `선택 구절 v${source.version}와 앞뒤 최대 2구절의 현재 전사문 · 최대 24000자`,
       context: rows
         .map((r) => r.text)
