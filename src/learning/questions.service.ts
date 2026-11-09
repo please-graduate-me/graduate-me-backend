@@ -14,7 +14,10 @@ import {
 } from '../admin/workspace-access.service.js';
 import { SourceService } from './source.service.js';
 import { HttpError } from '../common/http-error.js';
+import { readableMaterial } from './access.js';
+import { requireReadableVideo } from '../videos/access.js';
 import type {
+  LearningSource,
   questionInputSchema,
   recipientsQuerySchema,
 } from './contracts.js';
@@ -182,20 +185,47 @@ export class QuestionsService {
 
     const material = await this.db.manager.findOneBy(Material, {
       id: query.materialId,
-      ownerId: userId,
     });
 
-    const progress =
-      !material &&
-      (await this.db.manager.findOneBy(Progress, {
+    let source: LearningSource;
+
+    if (material) {
+      await readableMaterial(this.db, userId, material.id);
+
+      source = {
+        kind: 'pdf',
+        materialId: material.id,
+        page: 1,
+        quote: '',
+        title: material.title,
+        language: material.language,
+      };
+    } else {
+      const progress = await this.db.manager.findOneBy(Progress, {
         userId,
         videoId: query.materialId,
         archivedAt: IsNull(),
-      }));
+      });
 
-    if (!material && !progress)
-      throw new HttpError(404, '자료를 찾을 수 없습니다.');
-    if (query.language !== (material?.language ?? 'en'))
+      if (!progress) throw new HttpError(404, '자료를 찾을 수 없습니다.');
+
+      const video = await requireReadableVideo(
+        this.db,
+        userId,
+        query.materialId
+      );
+
+      source = {
+        kind: 'video',
+        videoId: video.id,
+        segmentId: '',
+        quote: '',
+        title: video.title,
+        language: video.language,
+      };
+    }
+
+    if (query.language !== source.language)
       throw new HttpError(400, '원문 언어를 확인해 주세요.');
 
     const profiles = await this.db.manager.find(HelperProfile, {
@@ -204,16 +234,7 @@ export class QuestionsService {
 
     const items = await Promise.all(
       profiles
-        .filter((p) =>
-          helperCanAccess(p, {
-            kind: 'pdf',
-            materialId: query.materialId!,
-            page: 1,
-            quote: '',
-            title: '',
-            language: query.language,
-          })
-        )
+        .filter((p) => helperCanAccess(p, source))
         .map(async (p) => {
           const user = await this.db.manager.findOneBy(User, { id: p.userId });
 

@@ -4,6 +4,9 @@ import { DataSource, In } from 'typeorm';
 import { databaseOptions } from '../database/options.js';
 import { User } from '../database/entities/User.entity.js';
 import { Material } from '../database/entities/Material.entity.js';
+import { Video } from '../database/entities/Video.entity.js';
+import { Progress } from '../database/entities/Progress.entity.js';
+import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { MaterialAccess } from '../database/entities/MaterialAccess.entity.js';
 import { LearningArtifact } from '../database/entities/LearningArtifact.entity.js';
 import { LearningQuestion } from '../database/entities/LearningQuestion.entity.js';
@@ -44,6 +47,7 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
     departing = randomUUID();
 
   const materialIds: string[] = [];
+  const videoId = randomUUID();
   const quote = 'Learning opens doors to new perspectives.';
 
   const input = {
@@ -76,6 +80,8 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
 
   afterAll(async () => {
     if (!db.isInitialized) return;
+
+    await db.manager.delete(Video, { id: videoId });
 
     await db.manager.delete(User, {
       id: In([owner, reader, other, departing]),
@@ -167,6 +173,67 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
     expect(
       (await materials.file(reader, material.id)).content.toString()
     ).toContain('%PDF-');
+  });
+
+  it('공용 PDF와 태국어 영상의 실제 언어·열람 권한으로 도우미 후보를 제공한다', async () => {
+    const material = await create();
+
+    await access.update(owner, material.id, {
+      kind: 'pdf',
+      visibility: 'public',
+      allowedUserIds: [],
+    });
+
+    await db.manager.insert(Video, {
+      id: videoId,
+      youtubeId: videoId.replaceAll('-', '').slice(0, 11),
+      title: '태국어 자료',
+      language: 'th',
+      ownerId: owner,
+      visibility: 'accounts',
+      allowedUserIds: [reader],
+    });
+
+    await db.manager.insert(Progress, { userId: reader, videoId });
+
+    await db.manager.insert(HelperProfile, {
+      userId: other,
+      languages: ['en', 'th'],
+      materialIds: [material.id, videoId],
+      active: true,
+    });
+
+    expect(
+      (
+        await questions.recipients(reader, {
+          materialId: material.id,
+          language: 'en',
+        })
+      ).items
+    ).toEqual([{ id: other, name: '테스트 계정', languages: ['en', 'th'] }]);
+
+    expect(
+      (
+        await questions.recipients(reader, {
+          materialId: videoId,
+          language: 'th',
+        })
+      ).items
+    ).toHaveLength(1);
+
+    await expect(
+      questions.recipients(reader, { materialId: videoId, language: 'en' })
+    ).rejects.toMatchObject({ status: 400 });
+
+    await access.update(owner, videoId, {
+      kind: 'video',
+      visibility: 'private',
+      allowedUserIds: [],
+    });
+
+    await expect(
+      questions.recipients(reader, { materialId: videoId, language: 'th' })
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it('원본 교체 시 과거 파일·발췌와 결과 source를 보존하고 영향을 받은 결과만 재검토 표시한다', async () => {
