@@ -109,9 +109,12 @@ export class WorkspaceQuestionsService {
     const builder = await this.scoped(userId);
 
     if (query.q)
-      builder.andWhere('(q.title ILIKE :term OR q.body ILIKE :term)', {
-        term: containsPattern(query.q),
-      });
+      builder.andWhere(
+        '(q.title ILIKE :term OR q.body ILIKE :term OR q.id ILIKE :term)',
+        {
+          term: containsPattern(query.q),
+        }
+      );
 
     const [rows, total] = await builder
       .orderBy('q.updatedAt', 'DESC')
