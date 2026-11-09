@@ -51,6 +51,7 @@ export class WorkspaceAccessService {
           : [],
       materialIds: profile?.active ? profile.materialIds : [],
       canReview: isAdmin || Boolean(profile?.active && profile.canReview),
+      canEdit: isAdmin || Boolean(profile?.active && profile.canEdit),
       canRequestEdit:
         isAdmin || Boolean(profile?.active && profile.canRequestEdit),
     };

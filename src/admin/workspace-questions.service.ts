@@ -5,6 +5,9 @@ import { LearningQuestion } from '../database/entities/LearningQuestion.entity.j
 import { QuestionMessage } from '../database/entities/QuestionMessage.entity.js';
 import { ReviewRequest } from '../database/entities/ReviewRequest.entity.js';
 import { ReviewEvent } from '../database/entities/ReviewEvent.entity.js';
+import { ArtifactRevision } from '../database/entities/ArtifactRevision.entity.js';
+import { SourceRevision } from '../database/entities/SourceRevision.entity.js';
+import { Segment } from '../database/entities/Segment.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { QuestionsService } from '../learning/questions.service.js';
 import { HttpError } from '../common/http-error.js';
@@ -34,6 +37,8 @@ export function reviewDetail(r: ReviewRequest) {
     updatedAt: r.updatedAt,
     author: { id: r.authorId, name: r.authorName },
     source: r.source,
+    target: r.target,
+    kind: r.kind,
   };
 }
 
@@ -54,7 +59,10 @@ export class WorkspaceQuestionsService {
       .createQueryBuilder('q');
 
     if (access.role !== 'admin') {
-      builder.where('q.assigneeId = :userId', { userId });
+      builder.where('q.assigneeId = :userId AND q.revokedAt IS NULL', {
+        userId,
+      });
+
       if (!access.languages.length || !access.materialIds.length)
         builder.andWhere('false');
       else
@@ -83,7 +91,8 @@ export class WorkspaceQuestionsService {
 
     if (
       access.role !== 'admin' &&
-      (row.assigneeId !== userId ||
+      (Boolean(row.revokedAt) ||
+        row.assigneeId !== userId ||
         !helperCanAccess(await this.access.profile(userId), row.source))
     )
       throw new HttpError(404, '질문을 찾을 수 없습니다.');
@@ -227,6 +236,46 @@ export class WorkspaceQuestionsService {
     await this.db.transaction(async (tx) => {
       const row = await this.readable(userId, id, tx);
       const user = await tx.findOneBy(User, { id: userId });
+      const target = input.target;
+
+      if (target) {
+        const expectedScope =
+          target.kind === 'segment'
+            ? 'source'
+            : target.kind === 'practice'
+              ? 'question'
+              : 'explanation';
+
+        const shared =
+          target.kind === 'segment'
+            ? row.source.kind === 'video' && row.source.segmentId === target.id
+            : row.attachment?.artifactId === target.id &&
+              row.attachment.kind === target.kind;
+
+        if (!shared || input.scope !== expectedScope)
+          throw new HttpError(
+            404,
+            '질문에 공유한 대상과 검토 범위를 확인해 주세요.'
+          );
+
+        const versionExists =
+          target.kind === 'segment'
+            ? (await tx.existsBy(Segment, {
+                id: target.id,
+                version: target.version,
+              })) ||
+              (await tx.existsBy(SourceRevision, {
+                segmentId: target.id,
+                version: target.version,
+              }))
+            : await tx.existsBy(ArtifactRevision, {
+                artifactId: target.id,
+                version: target.version,
+              });
+
+        if (!versionExists)
+          throw new HttpError(404, '검토할 대상 버전을 찾을 수 없습니다.');
+      }
 
       await tx.insert(ReviewRequest, {
         questionId: id,
@@ -235,6 +284,8 @@ export class WorkspaceQuestionsService {
         source: row.source,
         ...input,
         status: 'open',
+        target: input.target ?? null,
+        kind: 'review_request',
       });
 
       await this.questions.event(

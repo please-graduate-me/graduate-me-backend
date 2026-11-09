@@ -17,6 +17,13 @@ export const reviewInputSchema = z.object({
   scope: z.enum(['source', 'explanation', 'question']),
   version: z.string().trim().min(1).max(100),
   reason: z.string().trim().min(1).max(5000),
+  target: z
+    .object({
+      kind: z.enum(['explanation', 'practice', 'segment']),
+      id: z.string().min(1).max(128),
+      version: z.number().int().positive(),
+    })
+    .optional(),
 });
 
 /** 처리 사유 없는 검토 종료를 막는다. */
@@ -42,4 +49,5 @@ export const helperInputSchema = z.object({
   canReview: z.boolean(),
   canRequestEdit: z.boolean(),
   active: z.boolean(),
+  canEdit: z.boolean().optional(),
 });

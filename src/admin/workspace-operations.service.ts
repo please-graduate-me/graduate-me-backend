@@ -97,6 +97,7 @@ export class WorkspaceOperationsService {
       languages: row.languages,
       materialIds: row.materialIds,
       canReview: row.canReview,
+      canEdit: row.canEdit,
       canRequestEdit: row.canRequestEdit,
       active: row.active,
     };
@@ -124,6 +125,8 @@ export class WorkspaceOperationsService {
       );
     if (input.canRequestEdit && !input.canReview)
       throw new HttpError(400, '수정 요청에는 검토 권한도 필요합니다.');
+    if (input.canEdit && !input.canReview)
+      throw new HttpError(400, '직접 수정에는 검토 권한도 필요합니다.');
 
     if (input.materialIds.length) {
       const [materials, videos] = await Promise.all([
@@ -146,6 +149,7 @@ export class WorkspaceOperationsService {
           languages: input.languages,
           materialIds: input.materialIds,
           canReview: input.canReview,
+          canEdit: input.canEdit ?? false,
           canRequestEdit: input.canRequestEdit,
           active: input.active,
         },
