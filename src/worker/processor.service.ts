@@ -30,6 +30,17 @@ const responseSchema = z.object({
     .optional(),
 });
 
+const measurementSchema = z.object({
+  modelVersion: z.string().min(1).max(150).optional(),
+  usageMetadata: z
+    .object({
+      promptTokenCount: z.number().int().nonnegative().optional(),
+      candidatesTokenCount: z.number().int().nonnegative().optional(),
+      thoughtsTokenCount: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
+});
+
 /** 공식 영상 정보와 Gemini 전사를 작업 큐에 연결한다. */
 @Injectable()
 export class ProcessorService {
@@ -99,7 +110,7 @@ export class ProcessorService {
           sourceKey: `video:${request.videoId ?? request.youtubeId}:${request.language ?? 'en'}`,
           reservedOutputTokens: 32768,
         },
-        async () => {
+        async (recordUsage) => {
           const raw = await googleJson(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
             {
@@ -138,6 +149,22 @@ export class ProcessorService {
             'GEMINI'
           );
 
+          const measurement = measurementSchema.parse(raw);
+          const usage = measurement.usageMetadata;
+
+          const metrics = {
+            provider: 'gemini' as const,
+            model: measurement.modelVersion ?? model,
+            inputTokens: usage?.promptTokenCount ?? null,
+            outputTokens:
+              usage?.candidatesTokenCount === undefined
+                ? null
+                : usage.candidatesTokenCount + (usage.thoughtsTokenCount ?? 0),
+          };
+
+          // 불완전한 전사에도 이미 소비한 추론 토큰과 실제 모델을 남긴다.
+          await recordUsage(metrics);
+
           const candidate = responseSchema.parse(raw).candidates?.[0];
 
           if (
@@ -161,25 +188,9 @@ export class ProcessorService {
 
           const segments = parseTranscript(text, metadata.duration);
 
-          const usage = z
-            .object({
-              usageMetadata: z
-                .object({
-                  promptTokenCount: z.number().int().nonnegative().optional(),
-                  candidatesTokenCount: z
-                    .number()
-                    .int()
-                    .nonnegative()
-                    .optional(),
-                })
-                .optional(),
-            })
-            .parse(raw).usageMetadata;
-
           return {
             value: segments,
-            inputTokens: usage?.promptTokenCount ?? null,
-            outputTokens: usage?.candidatesTokenCount ?? null,
+            ...metrics,
           };
         }
       );

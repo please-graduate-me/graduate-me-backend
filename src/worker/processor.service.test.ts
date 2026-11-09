@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcessorService } from './processor.service.js';
-import type { UsageService } from '../ai/usage.service.js';
+import type { UsageService, UsageMeasurement } from '../ai/usage.service.js';
 
-function processor() {
+function processor(
+  recordUsage = vi
+    .fn<(measurement: UsageMeasurement) => Promise<void>>()
+    .mockResolvedValue(undefined)
+) {
   const usage = {
-    execute: async (_input: unknown, run: () => Promise<{ value: unknown }>) =>
-      (await run()).value,
+    execute: async (
+      _input: unknown,
+      run: (record: typeof recordUsage) => Promise<{ value: unknown }>
+    ) => (await run(recordUsage)).value,
   };
 
   return new ProcessorService(usage as unknown as UsageService);
@@ -257,6 +263,35 @@ describe('Gemini 영상 분석 경계', () => {
     await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
       code: 'GEMINI_INCOMPLETE',
       retryable,
+    });
+  });
+
+  it('전사 검증에 실패해도 추론을 포함한 실측 토큰과 실제 모델을 먼저 기록한다', async () => {
+    fixture(metadata, {
+      ...result({ segments }, 'MAX_TOKENS'),
+      modelVersion: 'gemini-actual-version',
+      usageMetadata: {
+        promptTokenCount: 12,
+        candidatesTokenCount: 8,
+        thoughtsTokenCount: 5,
+      },
+    });
+
+    const recordUsage = vi
+      .fn<(measurement: UsageMeasurement) => Promise<void>>()
+      .mockResolvedValue(undefined);
+
+    await expect(
+      processor(recordUsage).run(request, vi.fn())
+    ).rejects.toMatchObject({
+      code: 'GEMINI_INCOMPLETE',
+    });
+
+    expect(recordUsage).toHaveBeenCalledExactlyOnceWith({
+      provider: 'gemini',
+      model: 'gemini-actual-version',
+      inputTokens: 12,
+      outputTokens: 13,
     });
   });
 
