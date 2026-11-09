@@ -73,6 +73,13 @@ export class ConversationService {
     for (const key of ['materialId', 'videoId', 'segmentId'] as const)
       if (query[key])
         b.andWhere(`c.source->>'${key}'=:${key}`, { [key]: query[key] });
+    if (query.version)
+      b.andWhere("COALESCE(c.source->>'version', '1') = :sourceVersion", {
+        sourceVersion: String(query.version),
+      });
+    if (query.ocrId === 'none') b.andWhere("c.source->>'ocrId' IS NULL");
+    else if (query.ocrId)
+      b.andWhere("c.source->>'ocrId' = :ocrId", { ocrId: query.ocrId });
     if (query.page)
       b.andWhere("c.source->>'page'=:page", { page: String(query.page) });
     const rows = await b.orderBy('c.updatedAt', 'DESC').take(100).getMany();

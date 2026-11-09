@@ -70,6 +70,8 @@ export const preparationSchema = z.object({
 
 /** 저장 결과 조회는 생성 입력 없이 출처 필터만 받는다. */
 export const sourceQuerySchema = z.object({
+  version: z.coerce.number().int().positive().optional(),
+  ocrId: z.union([z.uuid(), z.literal('none')]).optional(),
   kind: z.enum(['pdf', 'video']).optional(),
   materialId: z.string().min(1).max(128).optional(),
   videoId: z.string().min(1).max(128).optional(),

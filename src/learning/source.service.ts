@@ -1,3 +1,4 @@
+import { MaterialOcrPage } from '../database/entities/MaterialOcrPage.entity.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import { Progress } from '../database/entities/Progress.entity.js';
@@ -51,7 +52,22 @@ export class SourceService {
 
       if (!material || input.page > material.pages.length)
         throw new HttpError(404, '원문 자료를 찾을 수 없습니다.');
-      text = material.pages[input.page - 1];
+      if (input.ocrId) {
+        const ocr = await this.db.manager.findOneBy(MaterialOcrPage, {
+          id: input.ocrId,
+          materialId: material.id,
+          version: material.version,
+          page: input.page,
+          status: 'ready',
+        });
+
+        if (!ocr)
+          throw new HttpError(
+            404,
+            '이 원본 버전과 페이지의 OCR 결과를 찾을 수 없습니다.'
+          );
+        text = ocr.text;
+      } else text = material.pages[input.page - 1];
 
       source = {
         ...input,
@@ -170,6 +186,34 @@ export class SourceService {
         source.materialId,
         source.version
       );
+
+      if (source.ocrId) {
+        const ocr = await this.db.manager.findOneByOrFail(MaterialOcrPage, {
+          id: source.ocrId,
+          materialId: source.materialId,
+          version: source.version,
+          page: source.page,
+          status: 'ready',
+        });
+
+        const adjacent = [source.page - 1, source.page + 1]
+          .filter((page) => page > 0 && page <= material.pages.length)
+          .map(
+            (page) =>
+              `[인접 ${page}페이지의 원본 추출 텍스트]\n${material.pages[page - 1]}`
+          )
+          .join('\n');
+
+        return {
+          source,
+          contextDescription: `PDF v${source.version} · ${source.page}페이지 OCR 인식 결과와 인접 페이지 원본 추출 텍스트 · 최대 24000자`,
+          context:
+            `[선택 페이지 OCR 인식 결과, 원본 대조 필요]\n${ocr.text.slice(0, 16000)}\n${adjacent.slice(0, 8000)}`.slice(
+              0,
+              24000
+            ),
+        };
+      }
 
       return {
         source,

@@ -1,3 +1,4 @@
+import { MaterialOcrPage } from './entities/MaterialOcrPage.entity.js';
 import { User } from './entities/User.entity.js';
 import { Account } from './entities/Account.entity.js';
 import { Session } from './entities/Session.entity.js';
@@ -38,6 +39,7 @@ import { MaterialVersion } from './entities/MaterialVersion.entity.js';
 
 /** API와 마이그레이션이 동일한 엔티티 메타데이터를 사용한다. */
 export const entities = [
+  MaterialOcrPage,
   User,
   Account,
   Session,

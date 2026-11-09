@@ -13,7 +13,9 @@ export function sameSource(a: LearningSource, b: LearningSource) {
   return (
     a.kind === b.kind &&
     (a.kind === 'pdf' && b.kind === 'pdf'
-      ? a.materialId === b.materialId && a.page === b.page
+      ? a.materialId === b.materialId &&
+        a.page === b.page &&
+        (a.ocrId ?? null) === (b.ocrId ?? null)
       : a.kind === 'video' &&
         b.kind === 'video' &&
         a.videoId === b.videoId &&
@@ -190,6 +192,13 @@ export class ArtifactService {
         b.andWhere(`a.source->>'${key}'=:${key}`, { [key]: query[key] });
     if (query.kind)
       b.andWhere("a.source->>'kind'=:sourceKind", { sourceKind: query.kind });
+    if (query.version)
+      b.andWhere("COALESCE(a.source->>'version', '1') = :sourceVersion", {
+        sourceVersion: String(query.version),
+      });
+    if (query.ocrId === 'none') b.andWhere("a.source->>'ocrId' IS NULL");
+    else if (query.ocrId)
+      b.andWhere("a.source->>'ocrId' = :ocrId", { ocrId: query.ocrId });
     if (query.page)
       b.andWhere("a.source->>'page'=:page", { page: String(query.page) });
     const rows = await b.orderBy('a.updatedAt', 'DESC').take(200).getMany();

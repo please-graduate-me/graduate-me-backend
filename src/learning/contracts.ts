@@ -24,6 +24,7 @@ export const languageSchema = z.enum(['en', 'th']);
 export const sourceInputSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('pdf'),
+    ocrId: z.uuid().optional(),
     materialId: z.string().uuid(),
     page: z.number().int().min(1).max(200),
     quote: z.string().trim().min(1).max(5000),

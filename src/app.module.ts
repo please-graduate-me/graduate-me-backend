@@ -1,3 +1,6 @@
+import { OcrController } from './ocr/ocr.controller.js';
+import { OcrService } from './ocr/ocr.service.js';
+import { OcrProviderService } from './ocr/ocr-provider.service.js';
 import { DemoController } from './videos/demo.controller.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
@@ -48,6 +51,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    OcrController,
     AppController,
     DemoController,
     VideosController,
@@ -65,6 +69,8 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    OcrService,
+    OcrProviderService,
     AuthService,
     AuthGuard,
     VideosService,

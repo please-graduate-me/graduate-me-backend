@@ -20,6 +20,7 @@ function sourcePath(source: LearningSource) {
 
   if (source.kind === 'pdf') {
     query.set('page', String(source.page));
+    if (source.ocrId) query.set('ocrId', source.ocrId);
 
     return `/materials/${encodeURIComponent(source.materialId)}?${query}`;
   }

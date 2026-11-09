@@ -64,6 +64,7 @@ export interface UsageInput {
   requestId?: string;
   estimatedInputTokens?: number;
   reservedOutputTokens?: number;
+  reservedCost?: number | null;
 }
 
 @Injectable()
@@ -93,11 +94,15 @@ export class UsageService {
       Math.max(0, Math.ceil(input.estimatedInputTokens ?? 0)) +
       Math.max(0, Math.ceil(input.reservedOutputTokens ?? 4096));
 
-    const reservedCost = estimatedCost(
-      input.provider,
-      input.estimatedInputTokens ?? 0,
-      input.reservedOutputTokens ?? 4096
-    );
+    // OCR처럼 토큰 단가가 없는 작업은 페이지 단가만 사용한다.
+    const reservedCost =
+      input.reservedCost !== undefined
+        ? input.reservedCost
+        : estimatedCost(
+            input.provider,
+            input.estimatedInputTokens ?? 0,
+            input.reservedOutputTokens ?? 4096
+          );
 
     const row = await this.db.transaction(async (tx) => {
       await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
@@ -208,9 +213,11 @@ export class UsageService {
           outputTokens,
           elapsedMs: Date.now() - start.getTime(),
           estimatedCost:
-            inputTokens !== null && outputTokens !== null
-              ? estimatedCost(input.provider, inputTokens, outputTokens)
-              : reservedCost,
+            input.reservedCost !== undefined
+              ? reservedCost
+              : inputTokens !== null && outputTokens !== null
+                ? estimatedCost(input.provider, inputTokens, outputTokens)
+                : reservedCost,
         }
       );
 

@@ -1,3 +1,4 @@
+import { MaterialOcrPage } from '../database/entities/MaterialOcrPage.entity.js';
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { z } from 'zod';
@@ -175,6 +176,7 @@ export class LearningAIService {
                     id: source.materialId,
                     version: source.version,
                     page: source.page,
+                    ocrId: source.ocrId,
                   }
                 : source,
             task,
@@ -286,7 +288,14 @@ export class LearningAIService {
           failed: { page: number; error: string }[] = [];
 
         for (let page = input.fromPage; page <= input.toPage; page++) {
-          const quote = material.pages[page - 1].trim();
+          const ocr = await this.db.manager.findOneBy(MaterialOcrPage, {
+            materialId: id,
+            version: material.version,
+            page,
+            status: 'ready',
+          });
+
+          const quote = (ocr?.text ?? material.pages[page - 1]).trim();
 
           if (!quote) {
             failed.push({
@@ -314,6 +323,7 @@ export class LearningAIService {
                   source: {
                     kind: 'pdf',
                     materialId: id,
+                    ocrId: ocr?.id,
                     page,
                     quote: excerpt,
                     version: material.version,

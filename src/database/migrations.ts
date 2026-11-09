@@ -1,3 +1,4 @@
+import { MaterialOcr1794223000300 } from './migrations/1794223000300-material-ocr.js';
 import { ConversationEvidence1794223000200 } from './migrations/1794223000200-conversation-evidence.js';
 import { RemoveAudioProcessing1794146400000 } from './migrations/1794146400000-remove-audio-processing.js';
 import { LearningWorkspace1794222000000 } from './migrations/1794222000000-learning-workspace.js';
@@ -31,4 +32,5 @@ export const migrations = [
   LearningAI1794223000000,
   MaterialVersions1794223000100,
   ConversationEvidence1794223000200,
+  MaterialOcr1794223000300,
 ];
