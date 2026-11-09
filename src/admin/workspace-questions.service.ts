@@ -113,15 +113,19 @@ export class WorkspaceQuestionsService {
         term: containsPattern(query.q),
       });
 
-    const rows = await builder
+    const [rows, total] = await builder
       .orderBy('q.updatedAt', 'DESC')
       .addOrderBy('q.id', 'ASC')
       .skip((query.page - 1) * query.limit)
       .take(query.limit)
-      .getMany();
+      .getManyAndCount();
 
     return {
       items: await Promise.all(rows.map((row) => this.questions.summary(row))),
+      page: query.page,
+      limit: query.limit,
+      total,
+      hasMore: query.page * query.limit < total,
     };
   }
   async saveDraft(

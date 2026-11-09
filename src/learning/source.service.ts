@@ -58,6 +58,7 @@ export class SourceService {
         language: 'en',
         start: segment.start,
         end: segment.end,
+        youtubeId: video.youtubeId,
       };
     }
 

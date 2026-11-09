@@ -28,6 +28,7 @@ export type LearningSource = SourceInput & {
   language: 'en' | 'th';
   start?: number;
   end?: number;
+  youtubeId?: string;
 };
 
 /** PDF 원본과 브라우저에서 추출한 페이지 텍스트의 크기를 제한한다. */
