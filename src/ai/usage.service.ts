@@ -1,6 +1,6 @@
 import { materialPolicy } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, IsNull, MoreThan } from 'typeorm';
+import { DataSource, IsNull, MoreThanOrEqual } from 'typeorm';
 import { AIUsage } from '../database/entities/AIUsage.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { HttpError } from '../common/http-error.js';
@@ -103,7 +103,13 @@ export class UsageService {
       ]);
 
       const entries = await tx.find(AIUsage, {
-        where: { ownerId: input.ownerId ?? IsNull(), createdAt: MoreThan(day) },
+        where: [
+          {
+            ownerId: input.ownerId ?? IsNull(),
+            createdAt: MoreThanOrEqual(day),
+          },
+          { ownerId: input.ownerId ?? IsNull(), status: 'running' },
+        ],
       });
 
       // 프로세스 중단으로 남은 예약은 공급자 최대 처리 시간보다 긴 유예 후 해제한다.
@@ -127,7 +133,10 @@ export class UsageService {
 
       const running = entries.filter((e) => e.status === 'running');
 
-      const tokens = entries.reduce(
+      // UTC 초기화는 일일 사용량만 비우고 전날 시작한 실행의 동시 제한은 유지한다.
+      const dailyEntries = entries.filter((entry) => entry.createdAt >= day);
+
+      const tokens = dailyEntries.reduce(
         (sum, e) =>
           sum +
           (e.status === 'running' ||
@@ -142,7 +151,7 @@ export class UsageService {
       );
 
       if (
-        entries.length >= limits.dailyRequests ||
+        dailyEntries.length >= limits.dailyRequests ||
         tokens + reservedTokens > limits.dailyTokens
       )
         throw new HttpError(
@@ -163,7 +172,7 @@ export class UsageService {
             '비용 상한을 사용하려면 공급자별 추정 단가를 설정해 주세요.'
           );
 
-        const cost = entries.reduce(
+        const cost = dailyEntries.reduce(
           (sum, e) => sum + (e.estimatedCost ?? 0),
           0
         );

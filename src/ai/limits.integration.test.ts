@@ -33,6 +33,65 @@ describe.skipIf(!testUrl)('AI 사용 한도와 중단된 요청의 저장 경계
     await db.destroy();
   });
 
+  it('UTC 자정 이전의 진행 요청은 동시 제한에 남고 자정 정각 기록도 일일 한도에 포함한다', async () => {
+    const ownerId = randomUUID();
+
+    owners.push(ownerId);
+    await db.manager.insert(User, { id: ownerId });
+    vi.stubEnv('AI_CONCURRENT_REQUEST_LIMIT', '1');
+    vi.stubEnv('AI_DAILY_REQUEST_LIMIT', '1');
+    vi.stubEnv('AI_DAILY_BUDGET_USD', '0');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T00:00:01Z'));
+
+    const row = await db.manager.save(AIUsage, {
+      ownerId,
+      provider: 'anthropic',
+      task: 'test',
+      model: 'mock-model',
+      sourceKey: 'midnight',
+      status: 'running',
+      createdAt: new Date('2026-11-09T23:59:59Z'),
+    });
+
+    const execute = vi.fn(async () => ({ value: '호출되면 안 됨' }));
+
+    const request = {
+      ownerId,
+      provider: 'anthropic' as const,
+      task: 'test',
+      model: 'mock-model',
+      sourceKey: 'next',
+      reservedOutputTokens: 1,
+    };
+
+    try {
+      await expect(
+        new UsageService(db).execute(request, execute)
+      ).rejects.toMatchObject({ status: 429 });
+
+      await db.manager.update(
+        AIUsage,
+        { id: row.id },
+        {
+          status: 'succeeded',
+          createdAt: new Date('2026-11-10T00:00:00Z'),
+          inputTokens: 1,
+          outputTokens: 1,
+        }
+      );
+
+      await expect(
+        new UsageService(db).execute(request, execute)
+      ).rejects.toMatchObject({ status: 429 });
+
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('실패·부분 미확인 토큰도 예약량 이상으로 합산해 다음 호출을 차단한다', async () => {
     vi.stubEnv('AI_DAILY_TOKEN_LIMIT', '200000');
     vi.stubEnv('AI_DAILY_REQUEST_LIMIT', '100');
