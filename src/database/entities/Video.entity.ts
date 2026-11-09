@@ -9,6 +9,15 @@ import type { ShareLink } from './ShareLink.entity.js';
 export interface Video {
   id: string;
   youtubeId: string;
+  language: 'en' | 'th';
+  analysisVersion: string;
+  ownerId: string | null;
+  visibility: 'private' | 'public' | 'accounts';
+  allowedUserIds: string[];
+  version: number;
+  translationStatus: 'pending' | 'processing' | 'ready' | 'failed';
+  blankStatus: 'pending' | 'processing' | 'ready' | 'failed';
+  processingError: string | null;
   title: string;
   duration: number | null;
   category: string | null;
@@ -32,6 +41,15 @@ export const Video = new EntitySchema<Video>({
       default: () => '(gen_random_uuid())',
     },
     youtubeId: { type: 'text' },
+    language: { type: 'text', default: 'en' },
+    analysisVersion: { type: 'text', default: 'v1' },
+    ownerId: { type: 'text', nullable: true },
+    visibility: { type: 'text', default: 'public' },
+    allowedUserIds: { type: 'jsonb', default: () => "'[]'" },
+    version: { type: 'integer', default: 1 },
+    translationStatus: { type: 'text', default: 'pending' },
+    blankStatus: { type: 'text', default: 'pending' },
+    processingError: { type: 'text', nullable: true },
     title: { type: 'text' },
     duration: { type: 'double precision', nullable: true },
     category: { type: 'text', nullable: true },
@@ -54,6 +72,20 @@ export const Video = new EntitySchema<Video>({
     },
   },
   indices: [
-    { name: 'Video_youtubeId_key', columns: ['youtubeId'], unique: true },
+    {
+      name: 'Video_youtubeId_language_analysisVersion_key',
+      columns: ['youtubeId', 'language', 'analysisVersion'],
+      unique: true,
+    },
+  ],
+  foreignKeys: [
+    {
+      name: 'Video_ownerId_fkey',
+      target: 'User',
+      columnNames: ['ownerId'],
+      referencedColumnNames: ['id'],
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE',
+    },
   ],
 });

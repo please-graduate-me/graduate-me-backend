@@ -13,6 +13,9 @@ export interface Segment {
   start: number;
   end: number;
   text: string;
+  translation: string | null;
+  blankCandidates: number[] | null;
+  version: number;
   words: { word: string; start: number; end: number }[];
   video: Video;
   states: SegmentState[];
@@ -36,6 +39,9 @@ export const Segment = new EntitySchema<Segment>({
     start: { type: 'double precision' },
     end: { type: 'double precision' },
     text: { type: 'text' },
+    translation: { type: 'text', nullable: true },
+    blankCandidates: { type: 'jsonb', nullable: true },
+    version: { type: 'integer', default: 1 },
     words: { type: 'jsonb' },
   },
   relations: {

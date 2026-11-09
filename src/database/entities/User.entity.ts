@@ -17,6 +17,10 @@ export interface User {
   replayCount: number | null;
   playbackRate: number;
   image: string | null;
+  targetLanguage: 'en' | 'th';
+  explanationLanguage: 'ko' | 'en' | 'th';
+  level: 'beginner' | 'intermediate' | 'advanced';
+  interests: string[];
   accounts: Account[];
   sessions: Session[];
   progress: Progress[];
@@ -43,6 +47,10 @@ export const User = new EntitySchema<User>({
     replayCount: { type: 'integer', nullable: true },
     playbackRate: { type: 'double precision', default: 1 },
     image: { type: 'text', nullable: true },
+    targetLanguage: { type: 'text', default: 'en' },
+    explanationLanguage: { type: 'text', default: 'ko' },
+    level: { type: 'text', default: 'beginner' },
+    interests: { type: 'jsonb', default: () => "'[]'" },
   },
   relations: {
     accounts: { type: 'one-to-many', target: 'Account', inverseSide: 'user' },

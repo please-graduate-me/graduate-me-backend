@@ -11,6 +11,12 @@ export interface ReviewRequest {
   version: string;
   reason: string;
   source: LearningSource;
+  target: {
+    kind: 'explanation' | 'practice' | 'segment';
+    id: string;
+    version: number;
+  } | null;
+  kind: 'report' | 'review_request';
   status: 'open' | 'resolved' | 'dismissed';
   resolution: string | null;
   createdAt: Date;
@@ -49,6 +55,8 @@ export const ReviewRequest = new EntitySchema<ReviewRequest>({
     source: {
       type: 'jsonb',
     },
+    target: { type: 'jsonb', nullable: true },
+    kind: { type: 'text', default: 'review_request' },
     status: {
       type: 'text',
       default: () => "'open'",

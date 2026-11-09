@@ -12,6 +12,10 @@ export interface LearningQuestion {
   assigneeId: string | null;
   draft: string;
   internalNote: string;
+  kind: 'question' | 'report';
+  resolvedAt: Date | null;
+  revokedAt: Date | null;
+  attachment: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +58,10 @@ export const LearningQuestion = new EntitySchema<LearningQuestion>({
       type: 'text',
       default: () => "''",
     },
+    kind: { type: 'text', default: 'question' },
+    resolvedAt: { type: 'timestamp', precision: 3, nullable: true },
+    revokedAt: { type: 'timestamp', precision: 3, nullable: true },
+    attachment: { type: 'jsonb', nullable: true },
     createdAt: {
       type: 'timestamp',
       precision: 3,

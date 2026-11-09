@@ -8,6 +8,7 @@ export interface HelperProfile {
   canReview: boolean;
   canRequestEdit: boolean;
   active: boolean;
+  canEdit: boolean;
   updatedAt: Date;
 }
 
@@ -38,6 +39,7 @@ export const HelperProfile = new EntitySchema<HelperProfile>({
       type: 'boolean',
       default: true,
     },
+    canEdit: { type: 'boolean', default: false },
     updatedAt: {
       type: 'timestamp',
       precision: 3,

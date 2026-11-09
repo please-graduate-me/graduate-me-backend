@@ -8,6 +8,9 @@ export interface SegmentState {
   progressId: string;
   segmentId: string;
   mode: string;
+  blankRatio: number;
+  hintCount: number;
+  sourceVersion: number;
   draft: string | string[];
   status: string;
   revealed: boolean;
@@ -29,6 +32,9 @@ export const SegmentState = new EntitySchema<SegmentState>({
     progressId: { type: 'text' },
     segmentId: { type: 'text' },
     mode: { type: 'text' },
+    blankRatio: { type: 'integer', default: 20 },
+    hintCount: { type: 'integer', default: 0 },
+    sourceVersion: { type: 'integer', default: 1 },
     draft: { type: 'jsonb' },
     status: { type: 'text', default: 'pending' },
     revealed: { type: 'boolean', default: false },
@@ -65,8 +71,14 @@ export const SegmentState = new EntitySchema<SegmentState>({
   },
   indices: [
     {
-      name: 'SegmentState_progressId_segmentId_mode_key',
-      columns: ['progressId', 'segmentId', 'mode'],
+      name: 'SegmentState_progressId_segmentId_mode_blankRatio_version_key',
+      columns: [
+        'progressId',
+        'segmentId',
+        'mode',
+        'blankRatio',
+        'sourceVersion',
+      ],
       unique: true,
     },
   ],

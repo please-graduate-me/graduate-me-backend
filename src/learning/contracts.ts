@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+const sourceLocation = {
+  version: z.number().int().positive().optional(),
+  rects: z
+    .array(
+      z
+        .object({
+          x: z.number().min(0).max(1),
+          y: z.number().min(0).max(1),
+          width: z.number().positive().max(1),
+          height: z.number().positive().max(1),
+        })
+        .refine((r) => r.x + r.width <= 1.001 && r.y + r.height <= 1.001)
+    )
+    .max(500)
+    .optional(),
+};
+
 /** 원문 언어를 지원 범위로 제한한다. */
 export const languageSchema = z.enum(['en', 'th']);
 
@@ -10,12 +27,14 @@ export const sourceInputSchema = z.discriminatedUnion('kind', [
     materialId: z.string().uuid(),
     page: z.number().int().min(1).max(200),
     quote: z.string().trim().min(1).max(5000),
+    ...sourceLocation,
   }),
   z.object({
     kind: z.literal('video'),
     videoId: z.string().min(1).max(128),
     segmentId: z.string().min(1).max(128),
     quote: z.string().trim().min(1).max(5000),
+    ...sourceLocation,
   }),
 ]);
 
@@ -59,12 +78,20 @@ export const expressionInputSchema = z.object({
   text: z.string().trim().min(1).max(1000),
   meaning: z.string().trim().max(5000).default(''),
   note: z.string().max(5000).default(''),
+  kind: z.enum(['word', 'phrase', 'sentence', 'concept']).optional(),
+  reviewIncluded: z.boolean().optional(),
+  explanationId: z.uuid().optional(),
+  explanationVersion: z.number().int().positive().optional(),
 });
 
 /** 표현의 개인 뜻과 메모를 편집한다. */
 export const expressionUpdateSchema = z.object({
   meaning: z.string().trim().max(5000).optional(),
   note: z.string().max(5000).optional(),
+  kind: z.enum(['word', 'phrase', 'sentence', 'concept']).optional(),
+  reviewIncluded: z.boolean().optional(),
+  explanationId: z.uuid().nullable().optional(),
+  explanationVersion: z.number().int().positive().nullable().optional(),
 });
 
 /** 질문에 공유할 원문과 공개할 본문만 받는다. */
@@ -73,6 +100,19 @@ export const questionInputSchema = z.object({
   body: z.string().trim().min(1).max(5000),
   source: sourceInputSchema,
   assigneeId: z.string().min(1).max(128).optional(),
+  kind: z.enum(['question', 'report']).optional(),
+  attachment: z
+    .union([
+      z.object({ artifactId: z.uuid(), version: z.number().int().positive() }),
+      z.object({ conversationId: z.uuid(), messageId: z.uuid() }),
+    ])
+    .optional(),
+});
+
+/** 해결 표시와 공유 철회를 질문 본문 변경과 분리한다. */
+export const questionStateSchema = z.object({
+  resolved: z.boolean().optional(),
+  shared: z.boolean().optional(),
 });
 
 /** 질문과 답변 본문의 공통 길이를 제한한다. */
@@ -102,4 +142,15 @@ export type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
 export const recipientsQuerySchema = z.object({
   language: languageSchema,
   materialId: z.string().min(1).max(128).optional(),
+});
+
+/** 언어·종류·복습 포함 여부와 문자열 검색을 검증한다. */
+export const expressionQuerySchema = z.object({
+  language: languageSchema.optional(),
+  kind: z.enum(['word', 'phrase', 'sentence', 'concept']).optional(),
+  q: z.string().trim().max(100).optional(),
+  reviewIncluded: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
 });

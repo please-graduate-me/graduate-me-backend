@@ -12,6 +12,9 @@ export interface Progress {
   videoId: string;
   currentIndex: number;
   mode: string;
+  blankRatio: 20 | 40 | 60;
+  cycle: number;
+  scriptViewed: boolean;
   favorite: boolean;
   archivedAt: Date | null;
   updatedAt: Date;
@@ -36,6 +39,9 @@ export const Progress = new EntitySchema<Progress>({
     videoId: { type: 'text' },
     currentIndex: { type: 'integer', default: 0 },
     mode: { type: 'text', default: 'blank' },
+    blankRatio: { type: 'integer', default: 20 },
+    cycle: { type: 'integer', default: 0 },
+    scriptViewed: { type: 'boolean', default: false },
     favorite: { type: 'boolean', default: false },
     archivedAt: { type: 'timestamp', precision: 3, nullable: true },
     updatedAt: {

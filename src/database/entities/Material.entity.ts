@@ -11,6 +11,7 @@ export interface Material {
   pages: string[];
   currentPage: number;
   memo: string;
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +53,7 @@ export const Material = new EntitySchema<Material>({
       type: 'text',
       default: () => "''",
     },
+    version: { type: 'integer', default: 1 },
     createdAt: {
       type: 'timestamp',
       precision: 3,

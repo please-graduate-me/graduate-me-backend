@@ -9,6 +9,10 @@ export interface Expression {
   meaning: string;
   note: string;
   source: LearningSource;
+  kind: 'word' | 'phrase' | 'sentence' | 'concept';
+  reviewIncluded: boolean;
+  explanationId: string | null;
+  explanationVersion: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +44,10 @@ export const Expression = new EntitySchema<Expression>({
     source: {
       type: 'jsonb',
     },
+    kind: { type: 'text', default: 'phrase' },
+    reviewIncluded: { type: 'boolean', default: true },
+    explanationId: { type: 'text', nullable: true },
+    explanationVersion: { type: 'integer', nullable: true },
     createdAt: {
       type: 'timestamp',
       precision: 3,
