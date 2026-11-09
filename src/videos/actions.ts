@@ -10,6 +10,16 @@ const answerSchema = z.union([
 /** 지원하지 않는 학습 동작과 잘못된 입력을 처리 전에 거부한다. */
 export const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reset') }),
+  z.object({ action: z.literal('viewScript') }),
+  z.object({
+    action: z.literal('blankRatio'),
+    ratio: z.union([z.literal(20), z.literal(40), z.literal(60)]),
+  }),
+  z.object({
+    action: z.literal('hint'),
+    segmentId: z.string(),
+    mode: modeSchema,
+  }),
   z.object({
     action: z.literal('difficulty'),
     segmentId: z.string(),

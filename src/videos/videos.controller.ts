@@ -30,9 +30,9 @@ export class VideosController {
   @Post()
   @HttpCode(200)
   register(@Req() request: UserRequest, @Body() body: unknown) {
-    const { url } = registerVideoSchema.parse(body);
+    const { url, language } = registerVideoSchema.parse(body);
 
-    return this.videos.registerVideo(request.userId, url);
+    return this.videos.registerVideo(request.userId, url, language);
   }
   @Get(':id')
   lesson(@Req() request: UserRequest, @Param('id') id: string) {

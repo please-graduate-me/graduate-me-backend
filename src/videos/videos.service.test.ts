@@ -83,7 +83,7 @@ describe('영상 분석 작업 등록', () => {
 });
 
 describe('영상별 학습 기록 초기화', () => {
-  it('본인 영상의 두 모드 기록을 지우고 첫 구절과 기본 모드로 돌아간다', async () => {
+  it('과거 답안은 보존하고 현재 진도와 시도를 새로 시작한다', async () => {
     const { service, tx } = setup();
 
     await expect(
@@ -94,7 +94,7 @@ describe('영상별 학습 기록 초기화', () => {
       where: { userId: 'me', videoId: 'video' },
     });
 
-    for (const entity of [Attempt, SegmentState, SegmentDifficulty])
+    for (const entity of [SegmentState, SegmentDifficulty])
       expect(tx.delete).toHaveBeenCalledWith(entity, {
         progressId: 'my-progress',
       });
@@ -102,8 +102,10 @@ describe('영상별 학습 기록 초기화', () => {
     expect(tx.update).toHaveBeenCalledWith(
       Progress,
       { id: 'my-progress' },
-      { currentIndex: 0, mode: 'blank' }
+      { currentIndex: 0, mode: 'full', cycle: 1, scriptViewed: false }
     );
+
+    expect(tx.delete).not.toHaveBeenCalledWith(Attempt, expect.anything());
 
     expect(tx.query.mock.invocationCallOrder[1]).toBeLessThan(
       tx.delete.mock.invocationCallOrder[0]

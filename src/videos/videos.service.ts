@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { DataSource, MoreThan } from 'typeorm';
 import { Video } from '../database/entities/Video.entity.js';
 import { SegmentState } from '../database/entities/SegmentState.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
@@ -7,10 +7,10 @@ import { VideoLike } from '../database/entities/VideoLike.entity.js';
 import { Attempt } from '../database/entities/Attempt.entity.js';
 import { SegmentDifficulty } from '../database/entities/SegmentDifficulty.entity.js';
 import { Segment } from '../database/entities/Segment.entity.js';
-import { blankIndices, gradeAnswer } from './grading.js';
+import { blankIndices, gradeAnswer, learningUnits } from './grading.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { recommendations } from './catalog.js';
-import { type Mode } from './contracts.js';
+import { gradeSchema, type Mode } from './contracts.js';
 import { type LearningAction } from './actions.js';
 import { HttpError } from '../common/http-error.js';
 import { parseYouTubeUrl } from './youtube.js';
@@ -20,7 +20,7 @@ import { parseYouTubeUrl } from './youtube.js';
 export class VideosService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async list(userId: string) {
-    return this.db
+    const rows = await this.db
       .getRepository(Progress)
       .createQueryBuilder('p')
       .innerJoin('p.video', 'v')
@@ -28,6 +28,7 @@ export class VideosService {
       .select('p.videoId', 'videoId')
       .addSelect('v.title', 'title')
       .addSelect('v.category', 'category')
+      .addSelect('v.language', 'language')
       .addSelect('p.currentIndex', 'currentIndex')
       .addSelect('p.favorite', 'favorite')
       .addSelect('p.updatedAt', 'updatedAt')
@@ -44,12 +45,17 @@ export class VideosService {
         '(SELECT count(*)::int FROM "SegmentDifficulty" d JOIN "Segment" s ON s.id = d."segmentId" WHERE d."progressId" = p.id)',
         'difficultCount'
       )
+      .addSelect(
+        `(SELECT count(DISTINCT s."segmentId")::int FROM "SegmentState" s JOIN "Segment" current ON current.id = s."segmentId" WHERE s."progressId" = p.id AND s.status = 'correct' AND s."sourceVersion" = current.version)`,
+        'completedCount'
+      )
       .where('p.userId = :userId AND p.archivedAt IS NULL', { userId })
       .orderBy('p.updatedAt', 'DESC')
       .getRawMany<{
         videoId: string;
         title: string;
         category: string | null;
+        language: 'en' | 'th';
         currentIndex: number;
         favorite: boolean;
         updatedAt: Date;
@@ -57,9 +63,22 @@ export class VideosService {
         likeCount: number;
         count: number;
         difficultCount: number;
+        completedCount: number;
       }>();
+
+    return rows.map((row) => ({
+      ...row,
+      progressPercent: row.count
+        ? Math.round((row.completedCount / row.count) * 100)
+        : 0,
+      isComplete: row.count > 0 && row.completedCount === row.count,
+    }));
   }
-  async registerVideo(userId: string, url: string) {
+  async registerVideo(
+    userId: string,
+    url: string,
+    language: 'en' | 'th' = 'en'
+  ) {
     let youtubeId: string;
 
     try {
@@ -69,14 +88,52 @@ export class VideosService {
     }
 
     return this.db.transaction(async (tx) => {
-      // 같은 영상의 동시 등록이 작업을 중복 생성하지 않도록 직렬화한다.
-      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [youtubeId]);
+      const analysisVersion = /^[a-zA-Z0-9._-]{1,50}$/.test(
+        process.env.VIDEO_ANALYSIS_VERSION || ''
+      )
+        ? process.env.VIDEO_ANALYSIS_VERSION!
+        : 'v1';
 
-      let video = await tx.findOneBy(Video, { youtubeId });
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `video-register:${userId}`,
+      ]);
+
+      // 같은 영상의 동시 등록이 작업을 중복 생성하지 않도록 직렬화한다.
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `${youtubeId}:${language}:${analysisVersion}`,
+      ]);
+
+      let video = await tx.findOneBy(Video, {
+        youtubeId,
+        language,
+        analysisVersion,
+      });
 
       if (!video) {
+        const limit = Math.max(
+          1,
+          Math.min(100, Number(process.env.VIDEO_DAILY_LIMIT) || 10)
+        );
+
+        const today = new Date();
+
+        today.setUTCHours(0, 0, 0, 0);
+        if (
+          (await tx.count(Video, {
+            where: { ownerId: userId, createdAt: MoreThan(today) },
+          })) >= limit
+        )
+          throw new HttpError(
+            429,
+            '오늘 등록할 수 있는 새 영상 수를 초과했습니다. 저장된 자료는 계속 학습할 수 있습니다.'
+          );
+
         const inserted = await tx.insert(Video, {
           youtubeId,
+          language,
+          analysisVersion,
+          ownerId: userId,
+          visibility: 'private',
           title:
             recommendations.find((item) => item.youtubeId === youtubeId)
               ?.title ?? '영상 정보를 확인하고 있어요',
@@ -141,6 +198,20 @@ export class VideosService {
     const { autoReplay, replayDelay, replayCount, playbackRate } =
       progress.user;
 
+    const completedCount = new Set(
+      states
+        .filter(
+          (state) =>
+            state.status === 'correct' &&
+            segments.some(
+              (segment) =>
+                segment.id === state.segmentId &&
+                segment.version === state.sourceVersion
+            )
+        )
+        .map((state) => state.segmentId)
+    ).size;
+
     return {
       settings: { autoReplay, replayDelay, replayCount, playbackRate },
       video: {
@@ -149,6 +220,8 @@ export class VideosService {
         title: video.title,
         duration: video.duration,
         category: video.category,
+        language: video.language,
+        analysisVersion: video.analysisVersion,
         liked,
         likeCount,
       },
@@ -161,22 +234,80 @@ export class VideosService {
         : null,
       progress: {
         currentIndex: progress.currentIndex,
-        mode: progress.mode,
+        mode:
+          progress.mode === 'blank' && video.blankStatus !== 'ready'
+            ? 'full'
+            : progress.mode,
+        blankRatio: progress.blankRatio,
+        cycle: progress.cycle,
+        scriptViewed: progress.scriptViewed,
         favorite: progress.favorite,
       },
+      completedCount,
+      progressPercent: segments.length
+        ? Math.round((completedCount / segments.length) * 100)
+        : 0,
+      isComplete: segments.length > 0 && completedCount === segments.length,
+      preparation: {
+        transcription:
+          video.job?.status === 'ready'
+            ? 'ready'
+            : video.job?.status === 'failed'
+              ? 'failed'
+              : 'pending',
+        translation: video.translationStatus,
+        blanks: video.blankStatus,
+        error: video.processingError,
+      },
       difficultSegmentIds: difficulties.map((item) => item.segmentId),
-      segments: segments.map((segment, index) => ({
-        ...segment,
-        index,
-        blanks: blankIndices(segment.text),
-      })),
+      segments: segments.map((segment, index) => {
+        const units = learningUnits(segment.text, video.language);
+
+        const blanks = blankIndices(
+          segment.text,
+          progress.blankRatio,
+          segment.blankCandidates,
+          video.language
+        );
+
+        const eligible = units.filter((unit) =>
+          /[\p{L}\p{N}]/u.test(unit)
+        ).length;
+
+        return {
+          ...segment,
+          index,
+          units,
+          translation:
+            progress.scriptViewed ||
+            states.some(
+              (state) =>
+                state.segmentId === segment.id &&
+                state.sourceVersion === segment.version &&
+                (state.revealed || state.status === 'correct')
+            )
+              ? segment.translation
+              : null,
+          blanks,
+          blankActualRatio: eligible
+            ? Math.round((blanks.length / eligible) * 100)
+            : 0,
+        };
+      }),
       states: states
         .filter((state) =>
-          segments.some((segment) => segment.id === state.segmentId)
+          segments.some(
+            (segment) =>
+              segment.id === state.segmentId &&
+              segment.version === state.sourceVersion
+          )
         )
         .map((state) => ({
           segmentId: state.segmentId,
           mode: state.mode,
+          blankRatio: state.blankRatio,
+          hintCount: state.hintCount,
+          sourceVersion: state.sourceVersion,
           draft: state.draft,
           status: state.status,
           revealed: state.revealed,
@@ -256,11 +387,12 @@ export class VideosService {
 
       if (job?.status !== 'ready')
         throw new HttpError(409, '영상 처리가 아직 완료되지 않았습니다.');
+      const video = await tx.findOne(Video, { where: { id: videoId } });
+      const ratio = progress.blankRatio || 20;
+      const language = video?.language ?? 'en';
 
       if (input.action === 'reset') {
         // 공유 영상은 보존하고 잠근 사용자 진도에 속한 두 모드의 기록만 지운다.
-        await tx.delete(Attempt, { progressId: progress.id });
-
         await tx.delete(SegmentDifficulty, { progressId: progress.id });
 
         await tx.delete(SegmentState, { progressId: progress.id });
@@ -268,7 +400,40 @@ export class VideosService {
         await tx.update(
           Progress,
           { id: progress.id },
-          { currentIndex: 0, mode: 'blank' }
+          {
+            currentIndex: 0,
+            mode: video?.blankStatus === 'ready' ? 'blank' : 'full',
+            scriptViewed: false,
+            cycle: (progress.cycle || 0) + 1,
+          }
+        );
+
+        return { ok: true };
+      }
+
+      if (input.action === 'viewScript') {
+        await tx.update(Progress, { id: progress.id }, { scriptViewed: true });
+
+        await tx.update(
+          SegmentState,
+          { progressId: progress.id },
+          { revealed: true }
+        );
+
+        return { ok: true };
+      }
+
+      if (input.action === 'blankRatio') {
+        if (video?.blankStatus && video.blankStatus !== 'ready')
+          throw new HttpError(
+            409,
+            '빈칸 후보가 준비되지 않았습니다. 전체 받아쓰기와 스크립트를 이용해 주세요.'
+          );
+
+        await tx.update(
+          Progress,
+          { id: progress.id },
+          { blankRatio: input.ratio }
         );
 
         return { ok: true };
@@ -283,6 +448,15 @@ export class VideosService {
       const count = activeSegments.length;
 
       if (input.action === 'navigate') {
+        if (
+          input.mode === 'blank' &&
+          video?.blankStatus &&
+          video.blankStatus !== 'ready'
+        )
+          throw new HttpError(
+            409,
+            '빈칸 후보가 준비되지 않았습니다. 전체 받아쓰기를 이용해 주세요.'
+          );
         if (input.index > count)
           throw new HttpError(400, '구절 범위를 벗어났습니다.');
 
@@ -330,7 +504,13 @@ export class VideosService {
         (input.mode === 'full'
           ? typeof input.answer !== 'string'
           : !Array.isArray(input.answer) ||
-            input.answer.length !== blankIndices(segment.text).length)
+            input.answer.length !==
+              blankIndices(
+                segment.text,
+                ratio,
+                segment.blankCandidates,
+                language
+              ).length)
       ) {
         throw new HttpError(400, '학습 모드에 맞는 답안을 입력해 주세요.');
       }
@@ -339,17 +519,62 @@ export class VideosService {
         progressId: progress.id,
         segmentId: segment.id,
         mode: input.mode,
+        blankRatio: input.mode === 'full' ? 0 : ratio,
+        sourceVersion: segment.version || 1,
       };
+
+      if (
+        input.mode === 'blank' &&
+        video?.blankStatus &&
+        video.blankStatus !== 'ready'
+      )
+        throw new HttpError(
+          409,
+          '빈칸 후보가 준비되지 않았습니다. 전체 받아쓰기를 이용해 주세요.'
+        );
 
       await tx
         .createQueryBuilder()
         .insert()
         .into(SegmentState)
-        .values({ ...key, draft: input.mode === 'full' ? '' : [] })
+        .values({
+          ...key,
+          draft: input.mode === 'full' ? '' : [],
+          revealed: progress.scriptViewed || false,
+        })
         .orIgnore()
         .execute();
 
       const state = await tx.findOneByOrFail(SegmentState, key);
+
+      if (input.action === 'hint') {
+        const units = learningUnits(segment.text, language);
+
+        const words =
+          input.mode === 'full'
+            ? units.filter((unit) => /[\p{L}\p{N}]/u.test(unit))
+            : blankIndices(
+                segment.text,
+                ratio,
+                segment.blankCandidates,
+                language
+              ).map((index) => units[index]);
+
+        const hint = words
+          .map(
+            (word) =>
+              `${Array.from(new Intl.Segmenter(language, { granularity: 'grapheme' }).segment(word))[0]?.segment || ''}…`
+          )
+          .join(' ');
+
+        await tx.update(
+          SegmentState,
+          { id: state.id },
+          { hintCount: (state.hintCount || 0) + 1 }
+        );
+
+        return { hint, hintCount: (state.hintCount || 0) + 1 };
+      }
 
       if (input.action === 'draft') {
         await tx.update(
@@ -357,6 +582,8 @@ export class VideosService {
           { id: state.id },
           { draft: input.answer }
         );
+
+        await tx.update(Progress, { id: progress.id }, { mode: input.mode });
 
         return { ok: true };
       }
@@ -396,12 +623,14 @@ export class VideosService {
           existing.progressId !== progress.id ||
           existing.segmentId !== segment.id ||
           existing.mode !== input.mode ||
+          (existing.result.blankRatio ??
+            (existing.mode === 'full' ? 0 : 20)) !== key.blankRatio ||
           JSON.stringify(existing.answer) !== JSON.stringify(input.answer)
         )
           throw new HttpError(409, '이미 사용된 요청입니다.');
 
         return {
-          grade: existing.result,
+          grade: gradeSchema.parse(existing.result),
           nextIndex: existing.correct ? activeIndex + 1 : activeIndex,
         };
       }
@@ -409,14 +638,26 @@ export class VideosService {
       const result = gradeAnswer(
         segment.text,
         input.mode as Mode,
-        input.answer
+        input.answer,
+        ratio,
+        segment.blankCandidates,
+        language
       );
 
       await tx.insert(Attempt, {
         id: input.requestId,
         ...key,
         answer: input.answer,
-        result: { ...result },
+        result: {
+          ...result,
+          sourceText: segment.text,
+          sourceVersion: segment.version || 1,
+          blankRatio: key.blankRatio,
+          rulesVersion: 'trim-exact-v1',
+          revealed: state.revealed || progress.scriptViewed || false,
+          hintCount: state.hintCount || 0,
+          cycle: progress.cycle || 0,
+        },
         correct: result.correct,
       });
 

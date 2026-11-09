@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { QueueService } from './queue.service.js';
 import { ProcessorService } from './processor.service.js';
 import { ProcessingError, type ClaimedJob } from './contracts.js';
+import { VideoPreparationService } from './video-preparation.service.js';
 
 /** HTTP 서버 없이 작업을 순서대로 처리하고 종료 시 실행 중인 분석도 중단한다. */
 @Injectable()
@@ -11,7 +12,8 @@ export class WorkerService {
 
   constructor(
     private readonly queue: QueueService,
-    private readonly processor: ProcessorService
+    private readonly processor: ProcessorService,
+    private readonly preparation: VideoPreparationService
   ) {}
 
   async run(signal: AbortSignal) {
@@ -41,7 +43,12 @@ export class WorkerService {
 
     try {
       const result = await this.processor.run(
-        { youtubeId: job.youtubeId },
+        {
+          youtubeId: job.youtubeId,
+          videoId: job.videoId,
+          language: job.language ?? 'en',
+          ownerId: job.ownerId ?? null,
+        },
         async (event) => {
           if (event.type === 'transcribing')
             await this.queue.transcribing(job, event);
@@ -50,23 +57,21 @@ export class WorkerService {
       );
 
       if (result.type !== 'complete') throw new Error('완료 결과가 없습니다.');
-      await this.queue.complete(job, result);
+
+      if (await this.queue.complete(job, result, true)) {
+        await this.preparation.prepare(job.videoId, controller.signal);
+        await this.queue.release(job);
+      }
     } catch (error) {
       const failure =
         error instanceof ProcessingError
           ? error
           : new ProcessingError(
               'INTERNAL',
-              '처리 중 오류가 발생했습니다. 잠시 후 다시 시도합니다.',
-              true
+              '처리 중 오류가 발생했습니다. 자동 재시도하지 않습니다.'
             );
 
-      await this.queue.fail(
-        job,
-        failure.code,
-        failure.message,
-        failure.retryable
-      );
+      await this.queue.fail(job, failure.code, failure.message);
 
       this.logger.warn(`작업 실패: ${job.id} (${failure.code})`);
     } finally {

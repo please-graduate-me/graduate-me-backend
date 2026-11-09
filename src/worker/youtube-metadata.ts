@@ -68,10 +68,10 @@ export async function youtubeMetadata(
       Number(match[3] ?? 0)
     : 0;
 
-  if (duration <= 0 || duration > 900) {
+  if (duration <= 0 || duration > 1800) {
     throw new ProcessingError(
       'UNSUPPORTED_DURATION',
-      '15분 이하의 영상만 지원합니다.'
+      '30분 이하의 영상만 지원합니다.'
     );
   }
 

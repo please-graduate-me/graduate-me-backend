@@ -36,6 +36,8 @@ describe.skipIf(!testUrl)('TypeORM 학습 저장과 동시 요청', () => {
       id: videoId,
       youtubeId,
       title: '학습 저장 검증',
+      blankStatus: 'ready',
+      translationStatus: 'ready',
     });
 
     await db.manager.insert(Job, { videoId, status: 'ready' });
@@ -47,6 +49,7 @@ describe.skipIf(!testUrl)('TypeORM 학습 저장과 동시 요청', () => {
       start: 0,
       end: 3,
       text: sentence,
+      blankCandidates: [0, 1, 2],
       words: [],
     });
   });

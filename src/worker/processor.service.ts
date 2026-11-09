@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { UsageService } from '../ai/usage.service.js';
 import { z } from 'zod';
 import { ProcessingError, type ProcessorEvent } from './contracts.js';
 import { googleJson } from './google-http.js';
@@ -32,8 +33,14 @@ const responseSchema = z.object({
 /** 공식 영상 정보와 Gemini 전사를 작업 큐에 연결한다. */
 @Injectable()
 export class ProcessorService {
+  constructor(@Inject(UsageService) private readonly usage: UsageService) {}
   async run(
-    request: { youtubeId: string },
+    request: {
+      youtubeId: string;
+      videoId?: string;
+      language?: 'en' | 'th';
+      ownerId?: string | null;
+    },
     onEvent: (event: ProcessorEvent) => Promise<void>,
     signal?: AbortSignal
   ): Promise<ProcessorEvent> {
@@ -73,60 +80,99 @@ export class ProcessorService {
       // DB 상태 저장이나 소유권 확인에 실패하면 유료 분석을 시작하지 않는다.
       combined.throwIfAborted();
 
-      const raw = await googleJson(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      const segments = await this.usage.execute(
         {
-          method: 'POST',
-          signal: combined,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': geminiKey,
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    fileData: {
-                      fileUri: `https://www.youtube.com/watch?v=${request.youtubeId}`,
-                    },
-                  },
-                  { text: transcriptionPrompt(metadata.duration) },
-                ],
-              },
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              responseJsonSchema: geminiResponseSchema,
-            },
-          }),
+          ownerId: request.ownerId ?? null,
+          provider: 'gemini',
+          task: 'video_transcription',
+          model,
+          sourceKey: `video:${request.videoId ?? request.youtubeId}:${request.language ?? 'en'}`,
+          reservedOutputTokens: 32768,
         },
-        'GEMINI'
+        async () => {
+          const raw = await googleJson(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+              method: 'POST',
+              signal: combined,
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': geminiKey,
+              },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    role: 'user',
+                    parts: [
+                      {
+                        fileData: {
+                          fileUri: `https://www.youtube.com/watch?v=${request.youtubeId}`,
+                        },
+                      },
+                      {
+                        text: transcriptionPrompt(
+                          metadata.duration,
+                          request.language ?? 'en'
+                        ),
+                      },
+                    ],
+                  },
+                ],
+                generationConfig: {
+                  responseMimeType: 'application/json',
+                  responseJsonSchema: geminiResponseSchema,
+                  maxOutputTokens: 32768,
+                },
+              }),
+            },
+            'GEMINI'
+          );
+
+          const candidate = responseSchema.parse(raw).candidates?.[0];
+
+          if (
+            !candidate ||
+            candidate.finishReason !== 'STOP' ||
+            !candidate.content
+          ) {
+            const retryable = candidate?.finishReason === 'MAX_TOKENS';
+
+            throw new ProcessingError(
+              'GEMINI_INCOMPLETE',
+              'Gemini가 완전한 전사 결과를 반환하지 않았습니다.',
+              retryable
+            );
+          }
+
+          const text = candidate.content.parts
+            .filter((part) => !part.thought)
+            .map((part) => part.text ?? '')
+            .join('');
+
+          const segments = parseTranscript(text, metadata.duration);
+
+          const usage = z
+            .object({
+              usageMetadata: z
+                .object({
+                  promptTokenCount: z.number().int().nonnegative().optional(),
+                  candidatesTokenCount: z
+                    .number()
+                    .int()
+                    .nonnegative()
+                    .optional(),
+                })
+                .optional(),
+            })
+            .parse(raw).usageMetadata;
+
+          return {
+            value: segments,
+            inputTokens: usage?.promptTokenCount ?? null,
+            outputTokens: usage?.candidatesTokenCount ?? null,
+          };
+        }
       );
-
-      const candidate = responseSchema.parse(raw).candidates?.[0];
-
-      if (
-        !candidate ||
-        candidate.finishReason !== 'STOP' ||
-        !candidate.content
-      ) {
-        const retryable = candidate?.finishReason === 'MAX_TOKENS';
-
-        throw new ProcessingError(
-          'GEMINI_INCOMPLETE',
-          'Gemini가 완전한 전사 결과를 반환하지 않았습니다.',
-          retryable
-        );
-      }
-
-      const text = candidate.content.parts
-        .filter((part) => !part.thought)
-        .map((part) => part.text ?? '')
-        .join('');
-
-      const segments = parseTranscript(text, metadata.duration);
 
       combined.throwIfAborted();
 

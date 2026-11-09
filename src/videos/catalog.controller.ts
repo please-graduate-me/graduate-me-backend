@@ -1,6 +1,6 @@
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import { publicVideoQuerySchema } from './catalog-contracts.js';
-import { AuthGuard } from '../auth/auth.guard.js';
+import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { CatalogService } from './catalog.service.js';
 
 @Controller('catalog')
@@ -11,11 +11,14 @@ export class CatalogController {
     @Inject(CatalogService) private readonly catalog: CatalogService
   ) {}
   @Get('videos')
-  videos(@Query() query: unknown) {
-    return this.catalog.list(publicVideoQuerySchema.parse(query));
+  videos(@Query() query: unknown, @Req() request: UserRequest) {
+    return this.catalog.list(
+      publicVideoQuerySchema.parse(query),
+      request.userId
+    );
   }
   @Get('categories')
-  categories() {
-    return this.catalog.categories();
+  categories(@Req() request: UserRequest) {
+    return this.catalog.categories(request.userId);
   }
 }

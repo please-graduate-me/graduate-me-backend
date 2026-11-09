@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 /** 목록 요청의 크기를 제한하고 정렬 방식을 명시한다. */
 export const publicVideoQuerySchema = z.object({
+  language: z.enum(['en', 'th']).optional(),
   category: z.string().trim().min(1).max(100).optional(),
   q: z.string().trim().max(100).optional(),
   sort: z.enum(['popular', 'latest']).default('popular'),

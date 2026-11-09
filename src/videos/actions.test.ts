@@ -19,7 +19,7 @@ describe('학습 요청 검증', () => {
         action: 'draft',
         segmentId: 'segment',
         mode: 'full',
-        answer: 'x'.repeat(2001),
+        answer: 'x'.repeat(5001),
       }).success
     ).toBe(false);
 

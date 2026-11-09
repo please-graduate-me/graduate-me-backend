@@ -8,25 +8,35 @@ import type { PublicVideoQuery } from './catalog-contracts.js';
 /** 공용 목록에 개인 정보가 섞이지 않도록 공개 조회를 분리한다. */
 export class CatalogService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
-  private available() {
-    return this.db
+  private available(userId?: string) {
+    const builder = this.db
       .getRepository(Video)
       .createQueryBuilder('v')
       .innerJoin('v.job', 'j', 'j.status = :status', { status: 'ready' })
       .where('EXISTS (SELECT 1 FROM "Segment" s WHERE s."videoId" = v.id)');
+
+    return userId
+      ? builder.andWhere(
+          `(v.visibility = 'public' OR (v.visibility = 'accounts' AND v."allowedUserIds" ? :userId))`,
+          { userId }
+        )
+      : builder.andWhere("v.visibility = 'public'");
   }
-  async list(query: PublicVideoQuery) {
-    const builder = this.available()
+  async list(query: PublicVideoQuery, userId?: string) {
+    const builder = this.available(userId)
       .select('v.id', 'id')
       .addSelect('v.youtubeId', 'youtubeId')
       .addSelect('v.title', 'title')
       .addSelect('v.duration', 'duration')
       .addSelect('v.category', 'category')
+      .addSelect('v.language', 'language')
       .addSelect(
         '(SELECT count(*)::int FROM "VideoLike" l WHERE l."videoId" = v.id)',
         'likeCount'
       );
 
+    if (query.language)
+      builder.andWhere('v.language = :language', { language: query.language });
     if (query.category)
       builder.andWhere('v.category = :category', { category: query.category });
     if (query.q)
@@ -45,6 +55,7 @@ export class CatalogService {
         title: string;
         duration: number | null;
         category: string | null;
+        language: 'en' | 'th';
         likeCount: number;
       }>();
 
@@ -55,8 +66,8 @@ export class CatalogService {
       hasMore: rows.length > query.limit,
     };
   }
-  async categories() {
-    return this.available()
+  async categories(userId?: string) {
+    return this.available(userId)
       .andWhere('v.category IS NOT NULL')
       .select('v.category', 'category')
       .addSelect('count(*)::int', 'count')

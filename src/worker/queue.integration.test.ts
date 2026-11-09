@@ -144,53 +144,38 @@ describe.skipIf(!testUrl)('NestJS 작업 큐 DB 통합', () => {
     });
   });
 
-  it('중단된 작업을 회수하면 이전 워커는 결과·오류·생존 신호를 저장할 수 없다', async () => {
+  it('중단된 작업은 실패로 종료하고 이전 워커가 결과를 저장하지 못한다', async () => {
     const old = (await queue.claim())!;
 
     await db.manager.update(Job, jobId, {
       heartbeatAt: new Date(Date.now() - 180000),
     });
 
-    const next = (await queue.claim())!;
-
-    expect(next.attempts).toBe(2);
-    expect(next.leaseToken).not.toBe(old.leaseToken);
+    expect(await queue.claim()).toBeNull();
     expect(await queue.heartbeat(old)).toBe(false);
 
-    expect(
-      await queue.complete(old, {
-        ...completed,
-        segments: [],
-      })
-    ).toBe(false);
+    expect(await queue.complete(old, { ...completed, segments: [] })).toBe(
+      false
+    );
 
     await expect(queue.transcribing(old, metadata)).rejects.toThrow();
-    await queue.fail(old, 'OLD', '이전 작업', false);
-    expect(await queue.heartbeat(next)).toBe(true);
-  });
-
-  it('일시 실패는 지연 후 재시도하고 세 번째 실패는 종료한다', async () => {
-    const job = (await queue.claim())!;
-
-    await queue.fail(job, 'NETWORK', '일시 실패', true);
-    expect(await queue.claim()).toBeNull();
-    const delayed = await db.manager.findOneByOrFail(Job, { id: jobId });
-
-    expect(delayed.availableAt.getTime()).toBeGreaterThan(Date.now() + 10000);
-
-    await db.manager.update(Job, jobId, {
-      attempts: 2,
-      availableAt: new Date(Date.now() - 1000),
-    });
-
-    const last = (await queue.claim())!;
-
-    expect(last.attempts).toBe(3);
-    await queue.fail(last, 'NETWORK', '다시 실패', true);
 
     expect((await db.manager.findOneByOrFail(Job, { id: jobId })).status).toBe(
       'failed'
     );
+  });
+
+  it('일시 실패도 자동 재시도 없이 한 번의 요청으로 종료한다', async () => {
+    const job = (await queue.claim())!;
+
+    await queue.fail(job, 'NETWORK', '일시 실패');
+    expect(await queue.claim()).toBeNull();
+
+    expect(await db.manager.findOneByOrFail(Job, { id: jobId })).toMatchObject({
+      status: 'failed',
+      attempts: 1,
+      leaseToken: null,
+    });
   });
 
   it('부분 저장이 실패하면 구절과 완료 상태를 함께 롤백한다', async () => {

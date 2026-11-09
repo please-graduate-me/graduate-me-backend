@@ -26,7 +26,10 @@ export const gradeSchema = z.object({
 export type Grade = z.infer<typeof gradeSchema>;
 
 /** 영상 등록 입력의 제한을 요청 양쪽에서 맞춘다. */
-export const registerVideoSchema = z.object({ url: z.string().max(2048) });
+export const registerVideoSchema = z.object({
+  url: z.string().max(2048),
+  language: z.enum(['en', 'th']).default('en'),
+});
 
 /** 좋아요 재전송으로 상태가 반전되지 않도록 원하는 값을 받는다. */
 export const videoLikeInputSchema = z.object({ liked: z.boolean() });

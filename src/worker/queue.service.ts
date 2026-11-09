@@ -13,14 +13,26 @@ export class QueueService {
 
   async claim(): Promise<ClaimedJob | null> {
     return this.db.transaction(async (tx) => {
-      await tx.query(`UPDATE "Job" SET status = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END,
-        "leaseToken" = NULL, "heartbeatAt" = NULL, "availableAt" = now() - interval '1 second', "updatedAt" = now(),
-        "errorCode" = 'WORKER_INTERRUPTED', "errorMessage" = '처리 작업이 중단되었습니다. 다시 시도해 주세요.'
-        WHERE status IN ('preparing','transcribing') AND "heartbeatAt" < now() - interval '90 seconds'`);
+      await tx.query(
+        `UPDATE "Job" SET status = 'failed', "leaseToken" = NULL, "heartbeatAt" = NULL, "updatedAt" = now(), "errorCode" = 'RETRY_DISABLED', "errorMessage" = '이전 분석 요청을 다시 실행하지 않습니다.' WHERE status = 'queued' AND attempts > 0`
+      );
+
+      await tx.query(`UPDATE "Video" v SET "translationStatus" = CASE WHEN v."translationStatus" IN ('pending','processing') THEN 'failed' ELSE v."translationStatus" END,
+        "blankStatus" = CASE WHEN v."blankStatus" IN ('pending','processing') THEN 'failed' ELSE v."blankStatus" END, "processingError" = '후속 자료 준비가 중단되었습니다. 자동 재시도하지 않습니다.'
+        FROM "Job" j WHERE j."videoId" = v.id AND j.status = 'ready' AND j."leaseToken" IS NOT NULL AND j."heartbeatAt" < now() - interval '90 seconds'`);
+
+      await tx.query(`UPDATE "Job" SET status = CASE WHEN status = 'ready' THEN 'ready' ELSE 'failed' END,
+        "leaseToken" = NULL, "heartbeatAt" = NULL, "updatedAt" = now(),
+        "errorCode" = 'WORKER_INTERRUPTED', "errorMessage" = '처리 작업이 중단되었습니다. 자동 재시도하지 않습니다.'
+        WHERE status IN ('preparing','transcribing','ready') AND "leaseToken" IS NOT NULL AND "heartbeatAt" < now() - interval '90 seconds'`);
+
+      await tx.query(`UPDATE "Video" v SET "translationStatus" = CASE WHEN v."translationStatus" IN ('pending','processing') THEN 'failed' ELSE v."translationStatus" END,
+        "blankStatus" = CASE WHEN v."blankStatus" IN ('pending','processing') THEN 'failed' ELSE v."blankStatus" END, "processingError" = j."errorMessage"
+        FROM "Job" j WHERE j."videoId" = v.id AND j.status = 'failed' AND (v."translationStatus" IN ('pending','processing') OR v."blankStatus" IN ('pending','processing'))`);
 
       const rows: ClaimedJob[] =
-        await tx.query(`SELECT j.*, v."youtubeId" FROM "Job" j JOIN "Video" v ON v.id = j."videoId"
-        WHERE j.status = 'queued' AND j."availableAt" <= now()
+        await tx.query(`SELECT j.*, v."youtubeId", v.language, v."ownerId" FROM "Job" j JOIN "Video" v ON v.id = j."videoId"
+        WHERE j.status = 'queued' AND j.attempts = 0 AND j."availableAt" <= now()
         ORDER BY j."createdAt" FOR UPDATE OF j SKIP LOCKED LIMIT 1`);
 
       const job = rows[0];
@@ -54,7 +66,7 @@ export class QueueService {
         {
           id: job.id,
           token: job.leaseToken,
-          statuses: ['preparing', 'transcribing'],
+          statuses: ['preparing', 'transcribing', 'ready'],
         }
       )
       .execute();
@@ -95,7 +107,8 @@ export class QueueService {
 
   async complete(
     job: ClaimedJob,
-    event: Extract<ProcessorEvent, { type: 'complete' }>
+    event: Extract<ProcessorEvent, { type: 'complete' }>,
+    keepLease = false
   ) {
     return this.db.transaction(async (tx) => {
       const owned = await this.owned(tx, job);
@@ -109,8 +122,8 @@ export class QueueService {
 
       await tx.update(Job, job.id, {
         status: 'ready',
-        leaseToken: null,
-        heartbeatAt: null,
+        leaseToken: keepLease ? job.leaseToken : null,
+        heartbeatAt: keepLease ? new Date() : null,
         errorCode: null,
         errorMessage: null,
       });
@@ -119,18 +132,13 @@ export class QueueService {
     });
   }
 
-  async fail(
-    job: ClaimedJob,
-    code: string,
-    message: string,
-    retryable: boolean
-  ) {
-    await this.db
+  async fail(job: ClaimedJob, code: string, message: string) {
+    const result = await this.db
       .createQueryBuilder()
       .update(Job)
       .set({
-        status: retryable && job.attempts < 3 ? 'queued' : 'failed',
-        availableAt: new Date(Date.now() + 15 * 2 ** (job.attempts - 1) * 1000),
+        status: () =>
+          "CASE WHEN status = 'ready' THEN 'ready' ELSE 'failed' END",
         leaseToken: null,
         heartbeatAt: null,
         errorCode: code,
@@ -141,5 +149,26 @@ export class QueueService {
         token: job.leaseToken,
       })
       .execute();
+
+    if (result.affected)
+      await this.db
+        .createQueryBuilder()
+        .update(Video)
+        .set({
+          translationStatus: () =>
+            `CASE WHEN "translationStatus" IN ('pending','processing') THEN 'failed' ELSE "translationStatus" END`,
+          blankStatus: () =>
+            `CASE WHEN "blankStatus" IN ('pending','processing') THEN 'failed' ELSE "blankStatus" END`,
+          processingError: message,
+        })
+        .where('id = :videoId', { videoId: job.videoId })
+        .execute();
+  }
+  async release(job: ClaimedJob) {
+    await this.db.manager.update(
+      Job,
+      { id: job.id, leaseToken: job.leaseToken, status: 'ready' },
+      { leaseToken: null, heartbeatAt: null }
+    );
   }
 }

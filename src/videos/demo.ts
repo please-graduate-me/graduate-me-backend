@@ -13,6 +13,10 @@ export const demoLessonSchema = z.object({
       start: z.number(),
       end: z.number(),
       text: z.string(),
+      translation: z.string().nullable(),
+      units: z.array(z.string()),
+      blankCandidates: z.array(z.number().int().nonnegative()).nullable(),
+      version: z.number().int().positive(),
     })
   ),
 });

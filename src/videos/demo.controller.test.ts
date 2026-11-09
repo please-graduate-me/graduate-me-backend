@@ -30,25 +30,51 @@ describe('공개 체험의 조회 범위', () => {
   });
 
   it('지정 영상의 학습 가능한 구절 최대 열 개만 조회한다', async () => {
-    const segments = [{ id: 'one', start: 10, end: 15, text: 'Hello there.' }];
+    const segments = [
+      {
+        id: 'one',
+        start: 10,
+        end: 15,
+        text: 'Hello there.',
+        translation: '안녕하세요.',
+        blankCandidates: [0],
+        version: 1,
+      },
+    ];
+
     const { controller, findOne, find } = setup('ready', segments);
 
     expect(await controller.lesson()).toEqual({
       youtubeId: demoYoutubeId,
       status: 'ready',
-      segments,
+      segments: [{ ...segments[0], units: ['Hello', 'there.'] }],
     });
 
     expect(findOne).toHaveBeenCalledWith(
       Video,
-      expect.objectContaining({ where: { youtubeId: demoYoutubeId } })
+      expect.objectContaining({
+        where: {
+          youtubeId: demoYoutubeId,
+          language: 'en',
+          analysisVersion: 'v1',
+          visibility: 'public',
+        },
+      })
     );
 
     expect(find).toHaveBeenCalledWith(Segment, {
       where: { videoId: 'demo' },
       order: { index: 'ASC' },
       take: 10,
-      select: { id: true, start: true, end: true, text: true },
+      select: {
+        id: true,
+        start: true,
+        end: true,
+        text: true,
+        translation: true,
+        blankCandidates: true,
+        version: true,
+      },
     });
   });
 

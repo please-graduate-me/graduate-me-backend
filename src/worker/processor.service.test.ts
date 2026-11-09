@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcessorService } from './processor.service.js';
+import type { UsageService } from '../ai/usage.service.js';
+
+function processor() {
+  const usage = {
+    execute: async (_input: unknown, run: () => Promise<{ value: unknown }>) =>
+      (await run()).value,
+  };
+
+  return new ProcessorService(usage as unknown as UsageService);
+}
 
 const request = { youtubeId: 'JnfBXjWm7hc' } as const;
 
@@ -56,7 +66,7 @@ describe('Gemini 영상 분석 경계', () => {
     const fetch = fixture();
     const event = vi.fn();
 
-    expect(await new ProcessorService().run(request, event)).toEqual({
+    expect(await processor().run(request, event)).toEqual({
       type: 'complete',
       segments: [{ ...segments[0], index: 0, words: [] }],
     });
@@ -108,9 +118,10 @@ describe('Gemini 영상 분석 경계', () => {
 
       vi.stubEnv(key, '');
 
-      await expect(
-        new ProcessorService().run(request, vi.fn())
-      ).rejects.toMatchObject({ code: 'PROCESSOR_CONFIG', retryable: false });
+      await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+        code: 'PROCESSOR_CONFIG',
+        retryable: false,
+      });
 
       expect(fetch).not.toHaveBeenCalled();
     }
@@ -159,23 +170,24 @@ describe('Gemini 영상 분석 경계', () => {
   ])('미지원 영상은 유료 분석 전에 거부한다', async (video) => {
     const fetch = fixture(video);
 
-    await expect(
-      new ProcessorService().run(request, vi.fn())
-    ).rejects.toMatchObject({ code: 'UNSUPPORTED_VIDEO', retryable: false });
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'UNSUPPORTED_VIDEO',
+      retryable: false,
+    });
 
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['PT0S', 'PT15M1S', 'PT1H', 'P1D', 'invalid'])(
+  it.each(['PT0S', 'PT30M1S', 'PT1H', 'P1D', 'invalid'])(
     '잘못되거나 제한을 넘은 영상 길이 %s를 거부한다',
     async (duration) => {
       const fetch = fixture({
         items: [{ ...metadata.items[0], contentDetails: { duration } }],
       });
 
-      await expect(
-        new ProcessorService().run(request, vi.fn())
-      ).rejects.toMatchObject({ code: 'UNSUPPORTED_DURATION' });
+      await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+        code: 'UNSUPPORTED_DURATION',
+      });
 
       expect(fetch).toHaveBeenCalledTimes(1);
     }
@@ -185,7 +197,7 @@ describe('Gemini 영상 분석 경계', () => {
     const fetch = fixture();
 
     await expect(
-      new ProcessorService().run(request, async () => {
+      processor().run(request, async () => {
         throw new Error('DB 실패');
       })
     ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
@@ -207,17 +219,19 @@ describe('Gemini 영상 분석 경계', () => {
   ])('길이·순서·겹침이 잘못된 구절을 저장하지 않는다', async (...invalid) => {
     fixture(metadata, result({ segments: invalid }));
 
-    await expect(
-      new ProcessorService().run(request, vi.fn())
-    ).rejects.toMatchObject({ code: 'INVALID_TRANSCRIPT', retryable: true });
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'INVALID_TRANSCRIPT',
+      retryable: true,
+    });
   });
 
   it('영어 발화가 없으면 빈 학습 자료를 완료 처리하지 않는다', async () => {
     fixture(metadata, result({ segments: [] }));
 
-    await expect(
-      new ProcessorService().run(request, vi.fn())
-    ).rejects.toMatchObject({ code: 'NO_SPEECH', retryable: false });
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'NO_SPEECH',
+      retryable: false,
+    });
   });
 
   it.each([
@@ -226,9 +240,10 @@ describe('Gemini 영상 분석 경계', () => {
   ])('불완전한 결과 %s를 완료로 처리하지 않는다', async (reason, retryable) => {
     fixture(metadata, result({ segments }, reason as string));
 
-    await expect(
-      new ProcessorService().run(request, vi.fn())
-    ).rejects.toMatchObject({ code: 'GEMINI_INCOMPLETE', retryable });
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'GEMINI_INCOMPLETE',
+      retryable,
+    });
   });
 
   it('깨진 JSON 응답을 거부한다', async () => {
@@ -238,9 +253,9 @@ describe('Gemini 영상 분석 경계', () => {
       ],
     });
 
-    await expect(
-      new ProcessorService().run(request, vi.fn())
-    ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'PROCESSOR_FAILED',
+    });
   });
 
   it.each([
@@ -259,9 +274,10 @@ describe('Gemini 영상 분석 경계', () => {
         .mockResolvedValueOnce(Response.json(categories))
         .mockResolvedValueOnce(new Response('민감한 외부 오류', { status }));
 
-      await expect(
-        new ProcessorService().run(request, vi.fn())
-      ).rejects.toMatchObject({ code: 'GEMINI_HTTP', retryable });
+      await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+        code: 'GEMINI_HTTP',
+        retryable,
+      });
     }
   );
 
@@ -270,9 +286,10 @@ describe('Gemini 영상 분석 경계', () => {
 
     fetch.mockReset().mockResolvedValueOnce(new Response('', { status: 429 }));
 
-    await expect(
-      new ProcessorService().run(request, vi.fn())
-    ).rejects.toMatchObject({ code: 'YOUTUBE_HTTP', retryable: true });
+    await expect(processor().run(request, vi.fn())).rejects.toMatchObject({
+      code: 'YOUTUBE_HTTP',
+      retryable: true,
+    });
 
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -303,11 +320,7 @@ describe('Gemini 영상 분석 경계', () => {
           })
       );
 
-    const pending = new ProcessorService().run(
-      request,
-      vi.fn(),
-      controller.signal
-    );
+    const pending = processor().run(request, vi.fn(), controller.signal);
 
     const rejected = expect(pending).rejects.toMatchObject({
       code: 'PROCESSOR_FAILED',
@@ -325,7 +338,7 @@ describe('Gemini 영상 분석 경계', () => {
     controller.abort();
 
     await expect(
-      new ProcessorService().run(request, vi.fn(), controller.signal)
+      processor().run(request, vi.fn(), controller.signal)
     ).rejects.toMatchObject({ code: 'PROCESSOR_FAILED' });
 
     expect(fetch).not.toHaveBeenCalled();

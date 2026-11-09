@@ -18,7 +18,7 @@ export type ProcessorEvent =
       }[];
     };
 
-/** 실제 처리 실패와 실행 환경 실패를 같은 재시도 정책으로 전달한다. */
+/** 실패 유형은 구분해 보존하되 자료 분석의 자동 재시도는 실행하지 않는다. */
 export class ProcessingError extends Error {
   constructor(
     public readonly code: string,
@@ -34,6 +34,8 @@ export interface ClaimedJob {
   id: string;
   videoId: string;
   youtubeId: string;
+  language?: 'en' | 'th';
+  ownerId?: string | null;
   attempts: number;
   leaseToken: string;
 }
