@@ -77,7 +77,7 @@ export class WorkspaceOperationsService {
           id: v.id,
           title: v.title,
           kind: 'video' as const,
-          language: 'en' as const,
+          language: v.language,
           owner: null,
           pageCount: null,
           duration: v.duration,
