@@ -34,6 +34,7 @@ import { ExcerptShare } from './entities/ExcerptShare.entity.js';
 import { MaterialAccess } from './entities/MaterialAccess.entity.js';
 import { MaterialReading } from './entities/MaterialReading.entity.js';
 import { SourceRevision } from './entities/SourceRevision.entity.js';
+import { MaterialVersion } from './entities/MaterialVersion.entity.js';
 
 /** API와 마이그레이션이 동일한 엔티티 메타데이터를 사용한다. */
 export const entities = [
@@ -73,4 +74,5 @@ export const entities = [
   MaterialAccess,
   MaterialReading,
   SourceRevision,
+  MaterialVersion,
 ];

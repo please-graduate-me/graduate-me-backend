@@ -10,6 +10,7 @@ export interface AIMessage {
   model: string | null;
   citations: { quote: string }[];
   uncertainty: string | null;
+  contextDescription: string | null;
   requestId: string | null;
   createdAt: Date;
 }
@@ -48,6 +49,7 @@ export const AIMessage = new EntitySchema<AIMessage>({
       type: 'text',
       nullable: true,
     },
+    contextDescription: { type: 'text', nullable: true },
     requestId: {
       type: 'text',
       nullable: true,

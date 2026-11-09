@@ -1,6 +1,8 @@
+import { ConversationEvidence1794223000200 } from './migrations/1794223000200-conversation-evidence.js';
 import { RemoveAudioProcessing1794146400000 } from './migrations/1794146400000-remove-audio-processing.js';
 import { LearningWorkspace1794222000000 } from './migrations/1794222000000-learning-workspace.js';
 import { LearningAI1794223000000 } from './migrations/1794223000000-learning-ai.js';
+import { MaterialVersions1794223000100 } from './migrations/1794223000100-material-versions.js';
 import { VideoLearningPolicy1794222000200 } from './migrations/1794222000200-video-learning-policy.js';
 import { NormalizeDefaults1793664000002 } from './migrations/1793664000002-normalize-defaults.js';
 import { Schema1793404800000 } from './migrations/1793404800000-schema.js';
@@ -27,4 +29,6 @@ export const migrations = [
   LearningWorkspace1794222000000,
   VideoLearningPolicy1794222000200,
   LearningAI1794223000000,
+  MaterialVersions1794223000100,
+  ConversationEvidence1794223000200,
 ];

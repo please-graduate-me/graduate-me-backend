@@ -51,7 +51,7 @@ export const explanationInputSchema = z.object({
   mode: z
     .enum(['meaning', 'translation', 'structure', 'concept'])
     .default('meaning'),
-  explanationLanguage: z.enum(['ko', 'en', 'th']).default('ko'),
+  explanationLanguage: z.enum(['ko', 'en', 'th']).optional(),
   image: z
     .object({
       base64: z.string().max(5_592_408),
@@ -65,7 +65,7 @@ export const preparationSchema = z.object({
   requestId: z.uuid(),
   fromPage: z.number().int().min(1),
   toPage: z.number().int().min(1),
-  explanationLanguage: z.enum(['ko', 'en', 'th']).default('ko'),
+  explanationLanguage: z.enum(['ko', 'en', 'th']).optional(),
 });
 
 /** 저장 결과 조회는 생성 입력 없이 출처 필터만 받는다. */
