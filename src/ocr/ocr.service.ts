@@ -120,7 +120,7 @@ export class OcrService {
     if (material.language !== 'en')
       throw new HttpError(
         422,
-        'CLOVA OCR은 영어 인식만 지원합니다. 태국어 문서는 추출된 원문 텍스트로 학습해 주세요.'
+        '이 서비스의 OCR은 영어 PDF를 지원합니다. 태국어 문서는 추출된 원문 텍스트로 학습해 주세요.'
       );
     const key = { materialId, version: input.version, page: input.page };
     const existing = await this.db.manager.findOneBy(MaterialOcrPage, key);
