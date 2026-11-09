@@ -1,3 +1,4 @@
+import { materialPolicy } from './material-policy.js';
 import {
   Body,
   Controller,
@@ -46,6 +47,10 @@ export class LearningController {
     @Inject(LearningService) private readonly learning: LearningService,
     @Inject(SourceService) private readonly sources: SourceService
   ) {}
+  @Get('learning/policy')
+  policy() {
+    return materialPolicy();
+  }
   @Get('materials')
   materialsList(@Req() r: UserRequest) {
     return this.materials.list(r.userId);

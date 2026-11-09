@@ -1,33 +1,15 @@
+import { materialPolicy } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, IsNull, MoreThan } from 'typeorm';
 import { AIUsage } from '../database/entities/AIUsage.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { HttpError } from '../common/http-error.js';
 
-function configuredNumber(name: string, fallback: number, maximum: number) {
-  const value = Number(process.env[name] || fallback);
-
-  return Number.isFinite(value) && value > 0
-    ? Math.min(maximum, value)
-    : fallback;
-}
-
-/** 조정 가능한 실행 한도를 서버에서 공통으로 사용한다. */
+/** 조정 가능한 실행 한도를 현재 자료 정책과 같은 기준으로 사용한다. */
 export function aiLimits() {
-  return {
-    dailyRequests: Math.floor(
-      configuredNumber('AI_DAILY_REQUEST_LIMIT', 100, 10000)
-    ),
-    dailyTokens: Math.floor(
-      configuredNumber('AI_DAILY_TOKEN_LIMIT', 200000, 10000000)
-    ),
-    concurrentRequests: Math.floor(
-      configuredNumber('AI_CONCURRENT_REQUEST_LIMIT', 2, 20)
-    ),
-    maxPreparationPages: Math.floor(
-      configuredNumber('AI_PREPARATION_PAGE_LIMIT', 10, 20)
-    ),
-  };
+  const policy = materialPolicy();
+
+  return { ...policy.ai, maxPreparationPages: policy.pdf.preparationPages };
 }
 
 /** 실제 청구 조회값과 구분할 환경설정 단가만 사용한다. */

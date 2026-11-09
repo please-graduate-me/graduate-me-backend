@@ -40,6 +40,10 @@ pnpm dev:logs
 pnpm dev:down
 ```
 
+## 자료 정책 설정
+
+개발 Compose는 `MATERIAL_POLICY_PROFILE=mvp`를 사용합니다. 파일·영상·AI 요청 한도를 같은 정책에서 계산하고 `/api/learning/policy`로 화면에 전달합니다. `standard`는 일반 실행용 한도를 사용합니다. MVP에서는 기존 AI 한도 환경값이 커도 테스트 상한을 넘기지 않습니다. 실제 비밀값은 기존 환경 파일에서만 관리합니다. 상세 기준과 검증 결과는 Notion에서 관리합니다.
+
 ## AI 공급자 설정
 
 통합 개발 환경의 실제 키는 `../graduate-me-infra/.env`에 `ANTHROPIC_API_KEY`로 설정합니다. 백엔드 단독 Compose는 이 저장소의 `.env`를 사용합니다. 키는 서버에만 전달하고 Git에 저장하지 않습니다.
