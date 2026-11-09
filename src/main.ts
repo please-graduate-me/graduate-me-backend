@@ -40,7 +40,7 @@ async function bootstrap() {
       next: express.NextFunction
     ) => {
       if (request.method === 'POST' && request.path === '/')
-        return express.json({ limit: '16mb' })(request, response, next);
+        return express.json({ limit: '32mb' })(request, response, next);
       next();
     }
   );

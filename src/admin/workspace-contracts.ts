@@ -9,7 +9,7 @@ export const draftInputSchema = z.object({
 
 /** 배정 해제는 명시적인 null로만 수행한다. */
 export const assignInputSchema = z.object({
-  assigneeId: z.string().uuid().nullable(),
+  assigneeId: z.string().min(1).max(128).nullable(),
 });
 
 /** 검토 대상과 버전을 함께 남겨 자료 전체 검토로 오인하지 않게 한다. */
@@ -36,7 +36,7 @@ export const helperInputSchema = z.object({
     .max(2)
     .refine((v) => new Set(v).size === v.length),
   materialIds: z
-    .array(z.string().uuid())
+    .array(z.string().min(1).max(128))
     .max(200)
     .refine((v) => new Set(v).size === v.length),
   canReview: z.boolean(),

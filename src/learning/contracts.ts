@@ -13,8 +13,8 @@ export const sourceInputSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('video'),
-    videoId: z.string().uuid(),
-    segmentId: z.string().uuid(),
+    videoId: z.string().min(1).max(128),
+    segmentId: z.string().min(1).max(128),
     quote: z.string().trim().min(1).max(5000),
   }),
 ]);
@@ -72,7 +72,7 @@ export const questionInputSchema = z.object({
   title: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(5000),
   source: sourceInputSchema,
-  assigneeId: z.string().uuid().optional(),
+  assigneeId: z.string().min(1).max(128).optional(),
 });
 
 /** 질문과 답변 본문의 공통 길이를 제한한다. */
@@ -101,5 +101,5 @@ export type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
 /** 담당 도우미 목록은 현재 언어와 원문 범위로 제한한다. */
 export const recipientsQuerySchema = z.object({
   language: languageSchema,
-  materialId: z.string().uuid().optional(),
+  materialId: z.string().min(1).max(128).optional(),
 });
