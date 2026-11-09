@@ -1,3 +1,5 @@
+import { ClovaProviderService } from '../ai/clova-provider.service.js';
+import { AnthropicProviderService } from '../ai/anthropic-provider.service.js';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseOptions } from '../database/options.js';
@@ -16,6 +18,8 @@ import { VideoPreparationService } from './video-preparation.service.js';
     ProcessorService,
     WorkerService,
     ProviderService,
+    ClovaProviderService,
+    AnthropicProviderService,
     UsageService,
     VideoPreparationService,
   ],

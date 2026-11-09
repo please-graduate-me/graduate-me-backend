@@ -1,3 +1,5 @@
+import { ClovaProviderService } from './ai/clova-provider.service.js';
+import { AnthropicProviderService } from './ai/anthropic-provider.service.js';
 import { OcrController } from './ocr/ocr.controller.js';
 import { OcrService } from './ocr/ocr.service.js';
 import { OcrProviderService } from './ocr/ocr-provider.service.js';
@@ -89,6 +91,8 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     WorkspaceQuestionsService,
     WorkspaceOperationsService,
     ProviderService,
+    ClovaProviderService,
+    AnthropicProviderService,
     UsageService,
     OperationService,
     ArtifactService,

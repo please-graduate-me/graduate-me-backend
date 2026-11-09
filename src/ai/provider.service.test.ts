@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderService } from './provider.service.js';
+
+beforeEach(() => vi.stubEnv('AI_PROVIDER', 'naver'));
 
 afterEach(() => {
   vi.unstubAllEnvs();
