@@ -110,11 +110,32 @@ export class PracticeService {
       'practice_generation',
       { ...input, source },
       async () => {
-        const prior = await this.db.manager.find(ExerciseAttempt, {
-          where: { ownerId, correct: false },
-          order: { createdAt: 'DESC' },
-          take: 10,
-        });
+        // 제외·검토 중 문항과 도움을 받은 시도는 새 복습의 약점 근거에 섞지 않는다.
+        const prior = await this.db
+          .getRepository(ExerciseAttempt)
+          .createQueryBuilder('p')
+          .innerJoin(
+            'LearningArtifact',
+            'artifact',
+            'artifact.id = p.artifactId AND artifact.version = p.version'
+          )
+          .leftJoin(
+            'ExerciseState',
+            'state',
+            'state.artifactId = p.artifactId AND state.version = p.version AND state.ownerId = p.ownerId'
+          )
+          .where(
+            'p.ownerId = :ownerId AND p.correct = false AND p.revealed = false AND p.hintUsed = false',
+            { ownerId }
+          )
+          .andWhere(
+            'artifact.status = :ready AND artifact.needsReview = false',
+            { ready: 'ready' }
+          )
+          .andWhere('COALESCE(state.excluded, false) = false')
+          .orderBy('p.createdAt', 'DESC')
+          .take(10)
+          .getMany();
 
         const relevant = prior
           .filter((p) => p.source.language === input.language)

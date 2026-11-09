@@ -592,6 +592,47 @@ describe.skipIf(!testUrl)(
         })
       ).toMatchObject({ correct: null, feedback: expect.any(String) });
 
+      const excluded = (
+        await practice.generate(
+          owner,
+          practiceGenerateSchema.parse({
+            source: selected,
+            requestId: randomUUID(),
+            language: 'en',
+            count: 1,
+          })
+        )
+      ).items[0];
+
+      await practice.answer(owner, excluded.id, {
+        requestId: randomUUID(),
+        version: 1,
+        answer: '제외한 모의 오답',
+      });
+
+      await practice.updateState(owner, excluded.id, {
+        version: 1,
+        excluded: true,
+      });
+
+      await practice.generate(
+        owner,
+        practiceGenerateSchema.parse({
+          source: selected,
+          requestId: randomUUID(),
+          language: 'en',
+          count: 1,
+        })
+      );
+
+      const latestInput = JSON.parse(
+        generated.mock.calls.at(-1)![0].messages[1].content
+      ) as { recentMistakes: { answer: string }[] };
+
+      expect(
+        latestInput.recentMistakes.some((p) => p.answer === '제외한 모의 오답')
+      ).toBe(false);
+
       const usageRows = await db.manager.findBy(AIUsage, { ownerId: owner });
 
       expect(
