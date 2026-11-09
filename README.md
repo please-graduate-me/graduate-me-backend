@@ -84,6 +84,8 @@ docker compose -f compose.test.yaml down
 
 `CLOVA_STUDIO_API_KEY`는 API와 worker에만 전달합니다. 기본 텍스트 모델은 `HCX-007`, 페이지 이미지 모델은 `HCX-005`이며 `CLOVA_TEXT_MODEL`, `CLOVA_IMAGE_MODEL`, `CLOVA_STUDIO_BASE_URL`로 설정합니다. 공식 HTTPS 주소와 지원 모델만 허용합니다. `GEMINI_API_KEY`, `YOUTUBE_API_KEY`, `GEMINI_MODEL`은 전사를 담당하는 worker에만 전달하고 YouTube Data API v3를 활성화합니다. 공급자 키를 학생 웹이나 관리자 웹에 전달하지 않습니다.
 
+`CLOVA_OCR_INVOKE_URL`과 `CLOVA_OCR_SECRET_KEY`는 API 서버에만 전달합니다. CLOVA OCR의 General 도메인과 API Gateway를 활성화하고 콘솔의 HTTPS `/general` 호출 주소를 설정합니다. 영어 스캔 PDF를 한 페이지씩 명시적으로 인식하며 태국어 OCR은 지원하지 않습니다. 원본과 인식 결과는 버전별로 분리합니다. `OCR_ESTIMATED_USD_PER_PAGE`에 USD 페이지 단가를 설정하면 추정 비용을 기록하고, 비우면 미집계로 표시합니다. 실제 OCR을 호출하지 않는 검증은 모의 응답을 사용합니다.
+
 `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_CONCURRENT_REQUEST_LIMIT`는 계정별 UTC 일일 요청·토큰·동시 실행 한도입니다. `AI_PREPARATION_PAGE_LIMIT`는 한 번에 준비할 PDF 페이지 수를 제한합니다. 공급자의 토큰 집계가 누락되거나 처리가 중단되면 예약 토큰을 보존해 한도 우회를 막습니다. `AI_DAILY_BUDGET_USD`가 0보다 크면 공급자별 `AI_NAVER_*_USD_PER_MILLION`, `AI_GEMINI_*_USD_PER_MILLION` 입력·출력 단가 설정을 함께 사용하며, 단가가 없으면 생성을 차단합니다. 단가가 비어 있으면 비용 표시는 미집계이고 실청구 조회값을 추측하지 않습니다.
 
 worker는 공식 영상 메타데이터로 공개·임베드 가능 여부와 30분 제한을 확인하고 영어·태국어 전사를 요청합니다. 검증된 전사가 준비되면 먼저 학습에 제공하고 번역과 빈칸 후보를 독립적으로 준비합니다. 같은 영상·언어·분석 버전의 결과를 재사용하며 공급자 오류와 잘못된 출력은 자동 재시도하지 않습니다. 기존 답안은 당시 구절·규칙·빈칸 비율·도움 사용 스냅샷으로 보존합니다.
