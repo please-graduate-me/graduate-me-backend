@@ -132,8 +132,13 @@ export class UsageService {
       const tokens = entries.reduce(
         (sum, e) =>
           sum +
-          (e.status === 'running'
-            ? e.reservedTokens
+          (e.status === 'running' ||
+          e.inputTokens === null ||
+          e.outputTokens === null
+            ? Math.max(
+                e.reservedTokens,
+                (e.inputTokens ?? 0) + (e.outputTokens ?? 0)
+              )
             : (e.inputTokens ?? 0) + (e.outputTokens ?? 0)),
         0
       );
