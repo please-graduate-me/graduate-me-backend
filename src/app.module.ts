@@ -27,6 +27,23 @@ import { WorkspaceAccessService } from './admin/workspace-access.service.js';
 import { WorkspaceGuard } from './admin/workspace.guard.js';
 import { WorkspaceQuestionsService } from './admin/workspace-questions.service.js';
 import { WorkspaceOperationsService } from './admin/workspace-operations.service.js';
+import { AIController } from './ai/ai.controller.js';
+import { ProviderService } from './ai/provider.service.js';
+import { UsageService } from './ai/usage.service.js';
+import { OperationService } from './ai/operation.service.js';
+import { ArtifactService } from './ai/artifact.service.js';
+import { LearningAIService } from './ai/learning-ai.service.js';
+import { ConversationService } from './ai/conversation.service.js';
+import { PracticeService } from './ai/practice.service.js';
+import { ProfileController } from './users/profile.controller.js';
+import { ProfileService } from './users/profile.service.js';
+import { RecordsController } from './learning/records.controller.js';
+import { RecordsService } from './learning/records.service.js';
+import { ContentController } from './admin/content.controller.js';
+import { ContentService } from './admin/content.service.js';
+import { MaterialVersionsController } from './learning/material-versions.controller.js';
+import { MaterialAccessController } from './admin/material-access.controller.js';
+import { MaterialAccessService } from './admin/material-access.service.js';
 
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
@@ -40,6 +57,12 @@ import { WorkspaceOperationsService } from './admin/workspace-operations.service
     AdminController,
     LearningController,
     WorkspaceController,
+    AIController,
+    ProfileController,
+    RecordsController,
+    ContentController,
+    MaterialVersionsController,
+    MaterialAccessController,
   ],
   providers: [
     AuthService,
@@ -59,6 +82,17 @@ import { WorkspaceOperationsService } from './admin/workspace-operations.service
     WorkspaceGuard,
     WorkspaceQuestionsService,
     WorkspaceOperationsService,
+    ProviderService,
+    UsageService,
+    OperationService,
+    ArtifactService,
+    LearningAIService,
+    ConversationService,
+    PracticeService,
+    ProfileService,
+    RecordsService,
+    ContentService,
+    MaterialAccessService,
   ],
 })
 /** API 기능의 의존성을 하나의 서버 진입점에서 조립한다. */

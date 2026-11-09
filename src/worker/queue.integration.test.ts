@@ -57,11 +57,11 @@ describe.skipIf(!testUrl)('NestJS 작업 큐 DB 통합', () => {
       title: '큐 검증',
     });
 
-    // DB 시각의 밀리초 반올림으로 새 작업이 미래로 판정되지 않게 한다.
+    // 호스트와 DB의 시계 차이가 큐 선택 검증에 영향을 주지 않게 한다.
     await db.manager.insert(Job, {
       id: jobId,
       videoId,
-      availableAt: new Date(Date.now() - 1000),
+      availableAt: new Date(0),
     });
   });
 

@@ -3,6 +3,11 @@ import { DataSource } from 'typeorm';
 import type { z } from 'zod';
 import { Expression } from '../database/entities/Expression.entity.js';
 import { PracticeAttempt } from '../database/entities/PracticeAttempt.entity.js';
+import { LearningArtifact } from '../database/entities/LearningArtifact.entity.js';
+import { ArtifactRevision } from '../database/entities/ArtifactRevision.entity.js';
+import { sameSource } from '../ai/artifact.service.js';
+import { containsPattern } from '../database/query.js';
+import type { LearningSource } from './contracts.js';
 import { HttpError } from '../common/http-error.js';
 import { normalizedExcerpt, SourceService } from './source.service.js';
 import type {
@@ -19,6 +24,10 @@ export function expressionDetail(row: Expression) {
     meaning: row.meaning,
     note: row.note,
     source: row.source,
+    kind: row.kind,
+    reviewIncluded: row.reviewIncluded,
+    explanationId: row.explanationId,
+    explanationVersion: row.explanationVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -41,11 +50,34 @@ export class ExpressionsService {
 
     return row;
   }
-  async list(userId: string) {
-    const rows = await this.db.manager.find(Expression, {
-      where: { ownerId: userId },
-      order: { updatedAt: 'DESC' },
-    });
+  async list(
+    userId: string,
+    filter: {
+      language?: string;
+      kind?: string;
+      q?: string;
+      reviewIncluded?: boolean;
+    } = {}
+  ) {
+    const b = this.db
+      .getRepository(Expression)
+      .createQueryBuilder('e')
+      .where('e.ownerId=:userId', { userId });
+
+    if (filter.language)
+      b.andWhere("e.source->>'language'=:language", {
+        language: filter.language,
+      });
+    if (filter.kind) b.andWhere('e.kind=:kind', { kind: filter.kind });
+    if (filter.q)
+      b.andWhere('(e.text ILIKE :q OR e.meaning ILIKE :q OR e.note ILIKE :q)', {
+        q: containsPattern(filter.q),
+      });
+    if (filter.reviewIncluded !== undefined)
+      b.andWhere('e.reviewIncluded=:reviewIncluded', {
+        reviewIncluded: filter.reviewIncluded,
+      });
+    const rows = await b.orderBy('e.updatedAt', 'DESC').getMany();
 
     return { items: rows.map(expressionDetail) };
   }
@@ -57,12 +89,40 @@ export class ExpressionsService {
     )
       throw new HttpError(400, '표현을 선택한 발췌에서 확인할 수 없습니다.');
 
-    const row = await this.db.manager.save(Expression, {
-      ownerId: userId,
-      text: input.text,
-      meaning: input.meaning,
-      note: input.note,
+    const explanation = await this.explanation(
+      userId,
       source,
+      input.explanationId,
+      input.explanationVersion
+    );
+
+    const row = await this.db.transaction(async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `expression:${userId}:${input.text}:${JSON.stringify({ ...source, rects: undefined })}`,
+      ]);
+
+      const existing = (
+        await tx.find(Expression, {
+          where: { ownerId: userId, text: input.text },
+        })
+      ).find(
+        (e) =>
+          sameSource(e.source, source) &&
+          normalizedExcerpt(e.source.quote) === normalizedExcerpt(source.quote)
+      );
+
+      if (existing) return existing;
+
+      return tx.save(Expression, {
+        ownerId: userId,
+        text: input.text,
+        meaning: input.meaning,
+        note: input.note,
+        source,
+        kind: input.kind ?? 'phrase',
+        reviewIncluded: input.reviewIncluded ?? true,
+        ...explanation,
+      });
     });
 
     return expressionDetail(row);
@@ -72,11 +132,61 @@ export class ExpressionsService {
     id: string,
     input: z.infer<typeof expressionUpdateSchema>
   ) {
-    await this.owned(userId, id);
+    const row = await this.owned(userId, id);
+
+    const explanation =
+      input.explanationId === undefined &&
+      input.explanationVersion === undefined
+        ? {}
+        : await this.explanation(
+            userId,
+            row.source,
+            input.explanationId === undefined
+              ? row.explanationId
+              : input.explanationId,
+            input.explanationVersion === undefined
+              ? row.explanationVersion
+              : input.explanationVersion
+          );
+
     if (Object.keys(input).length)
-      await this.db.manager.update(Expression, { id, ownerId: userId }, input);
+      await this.db.manager.update(
+        Expression,
+        { id, ownerId: userId },
+        { ...input, ...explanation }
+      );
 
     return expressionDetail(await this.owned(userId, id));
+  }
+  private async explanation(
+    ownerId: string,
+    source: LearningSource,
+    id?: string | null,
+    version?: number | null
+  ) {
+    if (!id) return { explanationId: null, explanationVersion: null };
+
+    const artifact = await this.db.manager.findOneBy(LearningArtifact, {
+      id,
+      ownerId,
+      kind: 'explanation',
+    });
+
+    if (
+      !artifact ||
+      !sameSource(source, artifact.source) ||
+      !version ||
+      !(await this.db.manager.findOneBy(ArtifactRevision, {
+        artifactId: id,
+        version,
+      }))
+    )
+      throw new HttpError(
+        400,
+        '같은 원문과 버전의 본인 설명만 연결할 수 있습니다.'
+      );
+
+    return { explanationId: id, explanationVersion: version };
   }
   async remove(userId: string, id: string) {
     await this.owned(userId, id);

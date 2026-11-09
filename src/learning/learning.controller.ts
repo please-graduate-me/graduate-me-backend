@@ -14,6 +14,8 @@ import {
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import { z } from 'zod';
+import { SourceService } from './source.service.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { MaterialsService } from './materials.service.js';
 import { ExpressionsService } from './expressions.service.js';
@@ -28,6 +30,8 @@ import {
   practiceInputSchema,
   questionInputSchema,
   recipientsQuerySchema,
+  questionStateSchema,
+  expressionQuerySchema,
 } from './contracts.js';
 
 @Controller()
@@ -39,7 +43,8 @@ export class LearningController {
     @Inject(ExpressionsService)
     private readonly expressions: ExpressionsService,
     @Inject(QuestionsService) private readonly questions: QuestionsService,
-    @Inject(LearningService) private readonly learning: LearningService
+    @Inject(LearningService) private readonly learning: LearningService,
+    @Inject(SourceService) private readonly sources: SourceService
   ) {}
   @Get('materials')
   materialsList(@Req() r: UserRequest) {
@@ -53,8 +58,18 @@ export class LearningController {
   @Get('materials/:id/file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
-  async materialFile(@Req() r: UserRequest, @Param('id') id: string) {
-    const material = await this.materials.file(r.userId, id);
+  async materialFile(
+    @Req() r: UserRequest,
+    @Param('id') id: string,
+    @Query('version') version?: string
+  ) {
+    const material = await this.materials.file(
+      r.userId,
+      id,
+      version === undefined
+        ? undefined
+        : z.coerce.number().int().positive().parse(version)
+    );
 
     return new StreamableFile(material.content, {
       type: 'application/pdf',
@@ -63,8 +78,18 @@ export class LearningController {
     });
   }
   @Get('materials/:id')
-  material(@Req() r: UserRequest, @Param('id') id: string) {
-    return this.materials.get(r.userId, id);
+  material(
+    @Req() r: UserRequest,
+    @Param('id') id: string,
+    @Query('version') version?: string
+  ) {
+    return this.materials.get(
+      r.userId,
+      id,
+      version === undefined
+        ? undefined
+        : z.coerce.number().int().positive().parse(version)
+    );
   }
   @Patch('materials/:id')
   materialUpdate(
@@ -83,8 +108,8 @@ export class LearningController {
     return this.materials.remove(r.userId, id);
   }
   @Get('expressions')
-  expressionsList(@Req() r: UserRequest) {
-    return this.expressions.list(r.userId);
+  expressionsList(@Req() r: UserRequest, @Query() query: unknown) {
+    return this.expressions.list(r.userId, expressionQuerySchema.parse(query));
   }
   @Post('expressions')
   @HttpCode(200)
@@ -127,6 +152,18 @@ export class LearningController {
   question(@Req() r: UserRequest, @Param('id') id: string) {
     return this.questions.get(r.userId, id);
   }
+  @Patch('questions/:id')
+  questionState(
+    @Req() r: UserRequest,
+    @Param('id') id: string,
+    @Body() body: unknown
+  ) {
+    return this.questions.updateState(
+      r.userId,
+      id,
+      questionStateSchema.parse(body)
+    );
+  }
   @Post('questions/:id/messages')
   @HttpCode(200)
   followUp(
@@ -144,6 +181,20 @@ export class LearningController {
   @HttpCode(200)
   practice(@Req() r: UserRequest, @Body() body: unknown) {
     return this.expressions.practice(r.userId, practiceInputSchema.parse(body));
+  }
+  @Get('learning/video-source/:videoId/:segmentId')
+  videoSource(
+    @Req() r: UserRequest,
+    @Param('videoId') videoId: string,
+    @Param('segmentId') segmentId: string,
+    @Query('version') version: string
+  ) {
+    return this.sources.videoArchive(
+      r.userId,
+      videoId,
+      segmentId,
+      z.coerce.number().int().positive().parse(version)
+    );
   }
   @Get('learning/summary')
   summary(@Req() r: UserRequest) {

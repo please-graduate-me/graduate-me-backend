@@ -39,12 +39,16 @@ async function bootstrap() {
       response: express.Response,
       next: express.NextFunction
     ) => {
-      if (request.method === 'POST' && request.path === '/')
+      if (
+        request.method === 'POST' &&
+        (request.path === '/' || /^\/[^/]+\/versions\/?$/.test(request.path))
+      )
         return express.json({ limit: '32mb' })(request, response, next);
       next();
     }
   );
 
+  app.use('/api/ai/explanations', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '16kb' }));
   app.use(/^\/api\/auth\/(.*)$/, ExpressAuth(app.get(AuthService).config));
