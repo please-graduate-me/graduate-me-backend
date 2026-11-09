@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DataSource, In } from 'typeorm';
@@ -172,12 +173,16 @@ describe.skipIf(!testUrl)(
     );
 
     async function material(pages = [quote]) {
+      const pdf = await PDFDocument.create();
+
+      pages.forEach(() => pdf.addPage([600, 800]));
+
       const row = await materials.create(owner, {
         title: '테스트 원문',
         language: 'en',
         filename: 'source.pdf',
         pages,
-        contentBase64: Buffer.from('%PDF-1.7\n%%EOF').toString('base64'),
+        contentBase64: Buffer.from(await pdf.save()).toString('base64'),
       });
 
       ids.push(row.id);

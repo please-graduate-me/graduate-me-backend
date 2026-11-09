@@ -1,3 +1,4 @@
+import { MaterialRegistration1794223000600 } from './migrations/1794223000600-material-registration.js';
 import { AIMessageProvider1794223000500 } from './migrations/1794223000500-ai-message-provider.js';
 import { MaterialOcr1794223000300 } from './migrations/1794223000300-material-ocr.js';
 import { OcrProvider1794223000400 } from './migrations/1794223000400-ocr-provider.js';
@@ -37,4 +38,5 @@ export const migrations = [
   MaterialOcr1794223000300,
   OcrProvider1794223000400,
   AIMessageProvider1794223000500,
+  MaterialRegistration1794223000600,
 ];

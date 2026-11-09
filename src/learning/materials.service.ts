@@ -1,6 +1,10 @@
 import { activeProviderIdentity } from '../ai/provider-config.js';
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, MoreThanOrEqual } from 'typeorm';
+import { PDFDocument } from 'pdf-lib';
+import { MaterialRegistration } from '../database/entities/MaterialRegistration.entity.js';
+import { MaterialOcrPage } from '../database/entities/MaterialOcrPage.entity.js';
+import { assessLearningText, materialPolicy } from './material-policy.js';
 import { z } from 'zod';
 import { Material } from '../database/entities/Material.entity.js';
 import { MaterialReading } from '../database/entities/MaterialReading.entity.js';
@@ -12,7 +16,7 @@ import { materialInputSchema, type materialUpdateSchema } from './contracts.js';
 import { readableMaterial } from './access.js';
 
 /** 원본 교체도 기존 업로드 한도를 유지하고 기대 버전이 있으면 충돌을 검사한다. */
-export const materialVersionInputSchema = materialInputSchema.extend({
+export const materialVersionInputSchema = materialInputSchema.safeExtend({
   expectedVersion: z.number().int().positive().optional(),
 });
 
@@ -32,15 +36,47 @@ export function materialSummary(material: Material) {
   };
 }
 
-function pdfContent(input: z.infer<typeof materialInputSchema>) {
+async function pdfContent(input: z.infer<typeof materialInputSchema>) {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(input.contentBase64))
     throw new HttpError(400, '올바른 PDF 파일이 아닙니다.');
   const content = Buffer.from(input.contentBase64, 'base64');
 
-  if (content.length > 10 * 1024 * 1024)
-    throw new HttpError(413, 'PDF는 10MB 이하로 등록해 주세요.');
+  const limits = materialPolicy().pdf;
+
+  if (content.length > limits.maxBytes)
+    throw new HttpError(
+      413,
+      `PDF는 ${limits.maxBytes / 1024 / 1024}MB 이하로 등록해 주세요.`
+    );
+  if (input.pages.length > limits.maxPages)
+    throw new HttpError(
+      413,
+      `PDF는 ${limits.maxPages}페이지 이하로 등록해 주세요.`
+    );
   if (content.subarray(0, 5).toString('ascii') !== '%PDF-')
     throw new HttpError(400, 'PDF 파일만 등록할 수 있습니다.');
+
+  let count: number;
+
+  try {
+    const document = await PDFDocument.load(content, { updateMetadata: false });
+
+    if (document.isEncrypted) throw new Error('암호화 원본');
+    count = document.getPageCount();
+  } catch {
+    throw new HttpError(400, '암호화되지 않은 정상 PDF 파일을 등록해 주세요.');
+  }
+
+  if (count > limits.maxPages)
+    throw new HttpError(
+      413,
+      `PDF 원본은 ${limits.maxPages}페이지 이하로 등록해 주세요.`
+    );
+  if (count < 1 || count !== input.pages.length)
+    throw new HttpError(
+      400,
+      'PDF 원본의 실제 페이지 수와 추출된 페이지 수가 일치하지 않습니다.'
+    );
 
   return content;
 }
@@ -119,12 +155,26 @@ export class MaterialsService {
 
     return { items };
   }
-  detail(material: Material, reading?: { currentPage: number; memo: string }) {
+  detail(
+    material: Material,
+    reading?: { currentPage: number; memo: string },
+    ocrPages: MaterialOcrPage[] = []
+  ) {
+    const pageTexts = material.pages.map(
+      (text, index) =>
+        ocrPages.find((page) => page.page === index + 1)?.text ?? text
+    );
+
     return {
       ...materialSummary(material),
       latestVersion: material.version,
       currentPage: Math.min(reading?.currentPage ?? 1, material.pages.length),
       pages: material.pages,
+      eligibility: assessLearningText(pageTexts.join('\n'), material.language),
+      pageEligibility: pageTexts.map((text) =>
+        assessLearningText(text, material.language)
+      ),
+      aiConfigured: activeProviderIdentity().configured,
       memo: reading?.memo ?? '',
       fileUrl: `/api/materials/${material.id}/versions/${material.version}/file`,
       capabilities: {
@@ -135,9 +185,28 @@ export class MaterialsService {
     };
   }
   async create(userId: string, input: z.infer<typeof materialInputSchema>) {
-    const content = pdfContent(input);
+    const content = await pdfContent(input);
 
     const material = await this.db.transaction(async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `pdf-register:${userId}`,
+      ]);
+
+      const start = new Date();
+
+      start.setUTCHours(0, 0, 0, 0);
+      const limit = materialPolicy().pdf.dailyNewLimit;
+
+      if (
+        (await tx.count(MaterialRegistration, {
+          where: { ownerId: userId, createdAt: MoreThanOrEqual(start) },
+        })) >= limit
+      )
+        throw new HttpError(
+          429,
+          `오늘 새로 등록할 수 있는 PDF ${limit}개를 모두 사용했습니다. 기존 자료와 저장 결과는 계속 이용할 수 있습니다.`
+        );
+
       const material = await tx.save(Material, {
         ownerId: userId,
         title: input.title,
@@ -148,6 +217,11 @@ export class MaterialsService {
         version: 1,
         currentPage: 1,
         memo: '',
+      });
+
+      await tx.insert(MaterialRegistration, {
+        materialId: material.id,
+        ownerId: userId,
       });
 
       await tx.insert(MaterialVersion, snapshot(material));
@@ -198,7 +272,15 @@ export class MaterialsService {
     });
 
     return {
-      ...this.detail(material, reading ?? undefined),
+      ...this.detail(
+        material,
+        reading ?? undefined,
+        await this.db.manager.findBy(MaterialOcrPage, {
+          materialId: id,
+          version: material.version,
+          status: 'ready',
+        })
+      ),
       owned: material.ownerId === userId,
       latestVersion,
       visibility: access?.visibility ?? 'private',
@@ -299,7 +381,7 @@ export class MaterialsService {
     id: string,
     input: z.infer<typeof materialVersionInputSchema>
   ) {
-    const content = pdfContent(input);
+    const content = await pdfContent(input);
 
     await this.db.transaction(async (tx) => {
       const current = await tx

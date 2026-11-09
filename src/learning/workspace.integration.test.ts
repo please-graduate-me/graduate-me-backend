@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DataSource } from 'typeorm';
@@ -52,11 +53,15 @@ describe.skipIf(!testUrl)('학생 질문과 admin 답변의 저장·권한 경�
 
     vi.stubEnv('ADMIN_EMAILS', adminEmail);
 
+    const pdf = await PDFDocument.create();
+
+    pdf.addPage([600, 800]);
+
     const material = await materials.create(owner, {
       title: '원문 검증 자료',
       language: 'en',
       filename: 'source.pdf',
-      contentBase64: Buffer.from('%PDF-1.7\n%%EOF').toString('base64'),
+      contentBase64: Buffer.from(await pdf.save()).toString('base64'),
       pages: [quote],
     });
 

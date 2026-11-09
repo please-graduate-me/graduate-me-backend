@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DataSource, In } from 'typeorm';
@@ -54,7 +55,7 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
     title: '학습 자료',
     language: 'en' as const,
     filename: 'source.pdf',
-    contentBase64: Buffer.from('%PDF-1.7\n%%EOF').toString('base64'),
+    contentBase64: '',
     pages: [quote, 'A second page.'],
   };
 
@@ -68,6 +69,10 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
 
   beforeAll(async () => {
     await db.initialize();
+    const pdf = await PDFDocument.create();
+
+    input.pages.forEach(() => pdf.addPage([600, 800]));
+    input.contentBase64 = Buffer.from(await pdf.save()).toString('base64');
 
     await db.manager.insert(
       User,
@@ -255,11 +260,15 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
       reviewStatus: 'verified',
     });
 
+    const pdf = await PDFDocument.create();
+
+    pdf.addPage([600, 800]);
+
     const replacement = {
       ...input,
       title: '수정 원본',
       pages: ['A changed source page.'],
-      contentBase64: Buffer.from('%PDF-1.7\nNEW\n%%EOF').toString('base64'),
+      contentBase64: Buffer.from(await pdf.save()).toString('base64'),
       expectedVersion: 1,
     };
 

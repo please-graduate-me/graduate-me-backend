@@ -52,20 +52,34 @@ export type LearningSource = SourceInput & {
 };
 
 /** PDF 원본과 브라우저에서 추출한 페이지 텍스트의 크기를 제한한다. */
-export const materialInputSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-  language: languageSchema,
-  filename: z.string().trim().min(1).max(200),
-  contentBase64: z.string().min(8).max(13_981_016),
-  pages: z
-    .array(z.string().max(50_000))
-    .min(1)
-    .max(200)
-    .refine(
-      (pages) =>
-        pages.reduce((total, page) => total + page.length, 0) <= 2_000_000
-    ),
-});
+export const materialInputSchema = z
+  .object({
+    learningPurposeConfirmed: z
+      .literal(true, {
+        error: '언어 학습 목적으로 사용할 자료임을 확인해 주세요.',
+      })
+      .optional()
+      .refine(
+        (value) => value === true,
+        '언어 학습 목적으로 사용할 자료임을 확인해 주세요.'
+      ),
+    title: z.string().trim().min(1).max(200),
+    language: languageSchema,
+    filename: z.string().trim().min(1).max(200),
+    contentBase64: z.string().min(8).max(13_981_016),
+    pages: z
+      .array(z.string().max(50_000))
+      .min(1)
+      .max(200)
+      .refine(
+        (pages) =>
+          pages.reduce((total, page) => total + page.length, 0) <= 2_000_000
+      ),
+  })
+  .refine((input) => input.learningPurposeConfirmed === true, {
+    path: ['learningPurposeConfirmed'],
+    message: '언어 학습 목적으로 사용할 자료임을 확인해 주세요.',
+  });
 
 /** 자료의 개인 메모와 마지막 읽은 위치만 변경한다. */
 export const materialUpdateSchema = z.object({
