@@ -36,7 +36,14 @@ export const materialInputSchema = z.object({
   language: languageSchema,
   filename: z.string().trim().min(1).max(200),
   contentBase64: z.string().min(8).max(13_981_016),
-  pages: z.array(z.string().max(50_000)).min(1).max(200),
+  pages: z
+    .array(z.string().max(50_000))
+    .min(1)
+    .max(200)
+    .refine(
+      (pages) =>
+        pages.reduce((total, page) => total + page.length, 0) <= 2_000_000
+    ),
 });
 
 /** 자료의 개인 메모와 마지막 읽은 위치만 변경한다. */

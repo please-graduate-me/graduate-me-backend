@@ -31,7 +31,21 @@ async function bootstrap() {
     }
   );
 
-  app.use(express.json({ limit: '16kb' }));
+  // PDF 원본의 base64 전송만 큰 본문을 허용해 일반 변경 요청의 크기와 분리한다.
+  app.use(
+    '/api/materials',
+    (
+      request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      if (request.method === 'POST' && request.path === '/')
+        return express.json({ limit: '16mb' })(request, response, next);
+      next();
+    }
+  );
+
+  app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '16kb' }));
   app.use(/^\/api\/auth\/(.*)$/, ExpressAuth(app.get(AuthService).config));
   app.useGlobalFilters(new ApiExceptionFilter());
