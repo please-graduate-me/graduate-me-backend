@@ -70,19 +70,15 @@ describe('영상 분석 작업 등록', () => {
     expect(insert).toHaveBeenCalledWith(Job, { videoId: 'shared-video' });
   });
 
-  it('API 서버에 Gemini 키가 없어도 본인 영상의 실패한 작업을 재시도한다', async () => {
+  it('실패 자료의 수동 재시도로 분석 작업을 다시 만들지 않는다', async () => {
     vi.stubEnv('GEMINI_API_KEY', '');
     const { service, tx } = setup();
 
-    await expect(service.retryVideo('me', 'video')).resolves.toEqual({
-      ok: true,
+    await expect(service.retryVideo('me', 'video')).rejects.toMatchObject({
+      status: 410,
     });
 
-    expect(tx.update).toHaveBeenCalledWith(
-      Job,
-      { videoId: 'video', status: 'failed' },
-      expect.objectContaining({ status: 'queued', attempts: 0 })
-    );
+    expect(tx.update).not.toHaveBeenCalled();
   });
 });
 

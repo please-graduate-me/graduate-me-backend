@@ -115,24 +115,7 @@ export class VideosService {
 
     if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
 
-    const updated = await this.db.manager.update(
-      Job,
-      { videoId, status: 'failed' },
-      {
-        status: 'queued',
-        attempts: 0,
-        availableAt: new Date(),
-        heartbeatAt: null,
-        leaseToken: null,
-        errorCode: null,
-        errorMessage: null,
-      }
-    );
-
-    if (!updated.affected)
-      throw new HttpError(409, '실패한 작업만 다시 시도할 수 있습니다.');
-
-    return { ok: true };
+    throw new HttpError(410, '실패한 자료의 분석 재시도는 제공하지 않습니다.');
   }
   async getLesson(userId: string, videoId: string) {
     const progress = await this.db.manager.findOne(Progress, {
