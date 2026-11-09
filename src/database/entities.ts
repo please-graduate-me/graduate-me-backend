@@ -13,6 +13,14 @@ import { Progress } from './entities/Progress.entity.js';
 import { SegmentDifficulty } from './entities/SegmentDifficulty.entity.js';
 import { SegmentState } from './entities/SegmentState.entity.js';
 import { Attempt } from './entities/Attempt.entity.js';
+import { Material } from './entities/Material.entity.js';
+import { Expression } from './entities/Expression.entity.js';
+import { LearningQuestion } from './entities/LearningQuestion.entity.js';
+import { QuestionMessage } from './entities/QuestionMessage.entity.js';
+import { HelperProfile } from './entities/HelperProfile.entity.js';
+import { ReviewRequest } from './entities/ReviewRequest.entity.js';
+import { ReviewEvent } from './entities/ReviewEvent.entity.js';
+import { PracticeAttempt } from './entities/PracticeAttempt.entity.js';
 
 /** API와 마이그레이션이 동일한 엔티티 메타데이터를 사용한다. */
 export const entities = [
@@ -31,4 +39,12 @@ export const entities = [
   SegmentDifficulty,
   SegmentState,
   Attempt,
+  Material,
+  Expression,
+  LearningQuestion,
+  QuestionMessage,
+  HelperProfile,
+  ReviewRequest,
+  ReviewEvent,
+  PracticeAttempt,
 ];
