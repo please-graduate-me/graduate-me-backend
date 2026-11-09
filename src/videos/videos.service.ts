@@ -119,6 +119,8 @@ export class VideosService {
       });
 
       if (!video) {
+        this.requireTranscriptionEnabled();
+
         const limit = Math.max(
           1,
           Math.min(100, Number(process.env.VIDEO_DAILY_LIMIT) || 10)
@@ -157,7 +159,10 @@ export class VideosService {
 
       const job = await tx.findOne(Job, { where: { videoId: video.id } });
 
-      if (!job) await tx.insert(Job, { videoId: video.id });
+      if (!job) {
+        this.requireTranscriptionEnabled();
+        await tx.insert(Job, { videoId: video.id });
+      }
 
       await tx
         .createQueryBuilder()
@@ -175,6 +180,16 @@ export class VideosService {
 
       return { videoId: video.id };
     });
+  }
+  private requireTranscriptionEnabled() {
+    const provider =
+      process.env.VIDEO_TRANSCRIPTION_PROVIDER?.trim() || 'gemini';
+
+    if (provider !== 'gemini')
+      throw new HttpError(
+        503,
+        '현재 새 영상 분석을 사용할 수 없습니다. 준비된 영상은 계속 학습할 수 있습니다.'
+      );
   }
   async retryVideo(userId: string, videoId: string) {
     const progress = await this.db.manager.findOne(Progress, {

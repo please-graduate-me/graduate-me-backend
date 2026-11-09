@@ -51,6 +51,7 @@ function fixture(video: unknown = metadata, generated: unknown = result()) {
 }
 
 beforeEach(() => {
+  vi.stubEnv('VIDEO_TRANSCRIPTION_PROVIDER', 'gemini');
   vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
   vi.stubEnv('YOUTUBE_API_KEY', 'test-youtube-key');
   vi.stubEnv('GEMINI_MODEL', 'gemini-3.8-flash');
@@ -62,6 +63,19 @@ afterEach(() => {
 });
 
 describe('Gemini 영상 분석 경계', () => {
+  it('전사를 끄면 키가 있어도 메타데이터와 모델을 호출하지 않는다', async () => {
+    vi.stubEnv('VIDEO_TRANSCRIPTION_PROVIDER', 'disabled');
+    const fetch = fixture();
+    const event = vi.fn();
+
+    await expect(processor().run(request, event)).rejects.toMatchObject({
+      code: 'PROCESSOR_CONFIG',
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(event).not.toHaveBeenCalled();
+  });
+
   it('공식 메타데이터 확인 후 URL을 전달하고 검증한 구절을 학습 계약으로 반환한다', async () => {
     const fetch = fixture();
     const event = vi.fn();

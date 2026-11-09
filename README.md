@@ -40,6 +40,14 @@ pnpm dev:logs
 pnpm dev:down
 ```
 
+## AI 공급자 설정
+
+통합 개발 환경의 실제 키는 `../graduate-me-infra/.env`에 `ANTHROPIC_API_KEY`로 설정합니다. 백엔드 단독 Compose는 이 저장소의 `.env`를 사용합니다. 키는 서버에만 전달하고 Git에 저장하지 않습니다.
+
+일반 AI는 `AI_PROVIDER=anthropic|naver`, OCR은 `OCR_PROVIDER=anthropic|clova`로 선택합니다. 로컬 기본값은 Claude이며 `ANTHROPIC_MODEL` 기본값은 `claude-sonnet-5-5`입니다. 공급자 교체 시 해당 키·모델도 함께 설정합니다. 다른 공급자로 자동 전환하지 않습니다. 추정 비용은 공급자별 `AI_*_USD_PER_MILLION` 단가를 설정했을 때만 집계합니다.
+
+`VIDEO_TRANSCRIPTION_PROVIDER=disabled`가 로컬 기본값입니다. 준비된 영상은 재사용하며 신규 분석은 접수하지 않습니다. 영상 전사를 활성화하려면 `gemini`와 worker 전용 Gemini·YouTube 설정이 필요합니다. 키 설정은 실제 API 호출이나 worker 실행 허가가 아닙니다.
+
 ## 검사
 
 ```sh

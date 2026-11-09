@@ -57,6 +57,35 @@ function setup(ownsVideo = true) {
 }
 
 describe('영상 분석 작업 등록', () => {
+  it('전사를 꺼도 준비된 영상은 재사용하며 작업은 만들지 않는다', async () => {
+    vi.stubEnv('VIDEO_TRANSCRIPTION_PROVIDER', 'disabled');
+    const { service, tx } = setup();
+    const insert = vi.fn();
+
+    Object.assign(tx, { insert });
+
+    await expect(
+      service.registerVideo('me', 'https://youtu.be/VHZI9_we5GQ')
+    ).resolves.toEqual({ videoId: 'video' });
+
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('전사를 끄면 신규 분석을 큐에 넣지 않는다', async () => {
+    vi.stubEnv('VIDEO_TRANSCRIPTION_PROVIDER', 'disabled');
+    const { service, tx } = setup();
+    const insert = vi.fn();
+
+    tx.findOne.mockResolvedValue(null);
+    Object.assign(tx, { insert });
+
+    await expect(
+      service.registerVideo('me', 'https://youtu.be/VHZI9_we5GQ')
+    ).rejects.toMatchObject({ status: 503 });
+
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   afterEach(() => vi.unstubAllEnvs());
 
   it('API 서버에 Gemini 키가 없어도 영상 처리 작업을 등록한다', async () => {

@@ -44,6 +44,16 @@ export class ProcessorService {
     onEvent: (event: ProcessorEvent) => Promise<void>,
     signal?: AbortSignal
   ): Promise<ProcessorEvent> {
+    const provider =
+      process.env.VIDEO_TRANSCRIPTION_PROVIDER?.trim() || 'gemini';
+
+    // 개발 설정이 다른 공급자의 키로 유료 분석을 시작하지 않도록 먼저 차단한다.
+    if (provider !== 'gemini')
+      throw new ProcessingError(
+        'PROCESSOR_CONFIG',
+        '새 영상 전사가 비활성화되어 있습니다. 준비된 영상으로 학습해 주세요.'
+      );
+
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const youtubeKey = process.env.YOUTUBE_API_KEY?.trim();
     const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
