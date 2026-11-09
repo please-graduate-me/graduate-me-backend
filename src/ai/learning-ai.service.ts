@@ -111,16 +111,22 @@ export class LearningAIService {
         reservedOutputTokens:
           identity.provider === 'anthropic' ? 8192 : image ? 4096 : 8192,
       },
-      async () => {
-        const raw = await this.provider.generate({
-          model: image ? 'image' : 'text',
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-          schema: jsonSchema,
-          ...(image ? { image } : {}),
-        });
+      async (recordUsage) => {
+        const raw = await this.provider.generate(
+          {
+            model: image ? 'image' : 'text',
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user },
+            ],
+            schema: jsonSchema,
+            ...(image ? { image } : {}),
+          },
+          undefined,
+          recordUsage
+        );
+
+        await recordUsage(raw);
 
         let parsed: unknown;
 

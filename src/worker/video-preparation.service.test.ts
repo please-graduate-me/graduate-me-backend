@@ -55,7 +55,10 @@ describe('영상의 독립적인 후속 준비', () => {
         outputTokens: 5,
       });
 
-    const execute = vi.fn(async (_input, run) => (await run()).value);
+    const execute = vi.fn(
+      async (_input, run) =>
+        (await run(vi.fn().mockResolvedValue(undefined))).value
+    );
 
     const service = new VideoPreparationService(
       db as unknown as DataSource,

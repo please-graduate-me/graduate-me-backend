@@ -72,19 +72,23 @@ export interface UsageInput {
   reservedCost?: number | null;
 }
 
+/** 검증 실패와 무관하게 보존할 실제 공급자 응답의 계량값이다. */
+export interface UsageMeasurement {
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  model?: string;
+  provider?: AIUsage['provider'];
+}
+
 @Injectable()
 /** 유료 호출 직전에 계정별 요청·동시 실행·예약 토큰 한도를 확인한다. */
 export class UsageService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async execute<T>(
     input: UsageInput,
-    run: () => Promise<{
-      value: T;
-      inputTokens?: number | null;
-      outputTokens?: number | null;
-      model?: string;
-      provider?: AIUsage['provider'];
-    }>
+    run: (
+      recordUsage: (measurement: UsageMeasurement) => Promise<void>
+    ) => Promise<{ value: T } & UsageMeasurement>
   ): Promise<T> {
     const limits = aiLimits();
 
@@ -200,37 +204,76 @@ export class UsageService {
       });
     });
 
+    const normalize = (value: number | null | undefined) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? Math.floor(value)
+        : null;
+
+    const measurementPatch = (measurement: UsageMeasurement) => {
+      const inputTokens = normalize(measurement.inputTokens),
+        outputTokens = normalize(measurement.outputTokens);
+
+      return {
+        provider: measurement.provider ?? input.provider,
+        model: measurement.model ?? input.model,
+        inputTokens,
+        outputTokens,
+        estimatedCost:
+          input.reservedCost !== undefined
+            ? reservedCost
+            : inputTokens !== null && outputTokens !== null
+              ? estimatedCost(
+                  measurement.provider ?? input.provider,
+                  inputTokens,
+                  outputTokens
+                )
+              : reservedCost,
+      };
+    };
+
+    let measured: UsageMeasurement = {};
+    let lastMeasurement = '';
+
+    const recordUsage = async (measurement: UsageMeasurement) => {
+      measured = {
+        inputTokens:
+          measurement.inputTokens ??
+          (measurement.inputTokens === null ? null : measured.inputTokens),
+        outputTokens:
+          measurement.outputTokens ??
+          (measurement.outputTokens === null ? null : measured.outputTokens),
+        model: measurement.model ?? measured.model,
+        provider: measurement.provider ?? measured.provider,
+      };
+
+      const patch = measurementPatch(measured),
+        fingerprint = JSON.stringify(patch);
+
+      if (fingerprint === lastMeasurement) return;
+      // 모델 출력 검증이 실패하거나 이후 처리가 끊겨도 이미 받은 실측값은 남긴다.
+      await this.db.manager.update(AIUsage, { id: row.id }, patch);
+      lastMeasurement = fingerprint;
+    };
+
     try {
-      const result = await run();
+      const result = await run(recordUsage);
 
-      const normalize = (v: number | null | undefined) =>
-        typeof v === 'number' && Number.isFinite(v) && v >= 0
-          ? Math.floor(v)
-          : null;
-
-      const inputTokens = normalize(result.inputTokens),
-        outputTokens = normalize(result.outputTokens);
+      const patch = measurementPatch({
+        ...measured,
+        ...Object.fromEntries(
+          Object.entries(result).filter(
+            ([key, value]) => key !== 'value' && value !== undefined
+          )
+        ),
+      });
 
       await this.db.manager.update(
         AIUsage,
         { id: row.id },
         {
           status: 'succeeded',
-          model: result.model ?? input.model,
-          provider: result.provider ?? input.provider,
-          inputTokens,
-          outputTokens,
+          ...patch,
           elapsedMs: Date.now() - start.getTime(),
-          estimatedCost:
-            input.reservedCost !== undefined
-              ? reservedCost
-              : inputTokens !== null && outputTokens !== null
-                ? estimatedCost(
-                    result.provider ?? input.provider,
-                    inputTokens,
-                    outputTokens
-                  )
-                : reservedCost,
         }
       );
 

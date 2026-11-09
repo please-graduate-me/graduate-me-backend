@@ -19,6 +19,11 @@ export interface ProviderInput {
   image?: { base64: string; mimeType: 'image/png' | 'image/jpeg' };
 }
 
+/** 출력 검증보다 먼저 확인한 공급자 실측값을 기록한다. */
+export type RecordProviderUsage = (
+  measurement: Omit<ProviderResult, 'text'>
+) => Promise<void>;
+
 /** 공급자가 반환한 모델과 측정 토큰을 결과와 함께 보존한다. */
 export interface ProviderResult {
   text: string;

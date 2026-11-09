@@ -1,3 +1,4 @@
+import type { RecordProviderUsage } from '../ai/provider-contracts.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { HttpError } from '../common/http-error.js';
 import { ClovaOcrProviderService } from './clova-ocr-provider.service.js';
@@ -33,7 +34,8 @@ export class OcrProviderService {
   }
   async recognize(
     input: { data: Buffer; width: number; height: number; requestId: string },
-    expected: OcrProviderIdentity
+    expected: OcrProviderIdentity,
+    recordUsage?: RecordProviderUsage
   ): Promise<OcrProviderResult> {
     const current = this.identity();
 
@@ -47,10 +49,11 @@ export class OcrProviderService {
       );
     if (!current.configured)
       throw new HttpError(503, '선택한 OCR 공급자의 연결 설정이 필요합니다.');
-    if (current.provider === 'anthropic') return this.claude.recognize(input);
+    if (current.provider === 'anthropic')
+      return this.claude.recognize(input, recordUsage);
 
     return {
-      result: await this.clova.recognize(input),
+      result: await this.clova.recognize(input, recordUsage),
       provider: current.provider,
       model: current.model,
       inputTokens: null,

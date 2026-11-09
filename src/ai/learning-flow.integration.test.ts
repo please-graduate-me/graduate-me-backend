@@ -292,6 +292,38 @@ describe.skipIf(!testUrl)(
 
       expect(retry.failed).toHaveLength(1);
       expect(generated.mock.calls.length).toBe(callsAfterFailure);
+      const invalidSource = await source();
+      const invalidId = randomUUID();
+
+      generated.mockResolvedValueOnce({
+        text: '{"translation":"형식 누락"}',
+        provider: 'naver',
+        model: 'actual-invalid-output',
+        inputTokens: 91,
+        outputTokens: 17,
+      });
+
+      await expect(
+        ai.explain(
+          owner,
+          explanationInputSchema.parse({
+            requestId: invalidId,
+            source: invalidSource,
+          })
+        )
+      ).rejects.toMatchObject({ status: 502 });
+
+      expect(
+        await db.manager.findOneBy(AIUsage, {
+          ownerId: owner,
+          requestId: invalidId,
+        })
+      ).toMatchObject({
+        status: 'failed',
+        model: 'actual-invalid-output',
+        inputTokens: 91,
+        outputTokens: 17,
+      });
     });
 
     it('개인 대화는 열기만으로 호출하지 않고 무관한 질문에는 본문 생성을 중단한다', async () => {

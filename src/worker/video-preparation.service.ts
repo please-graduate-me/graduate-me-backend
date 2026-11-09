@@ -158,7 +158,7 @@ export class VideoPreparationService {
         estimatedInputTokens: Math.ceil(JSON.stringify(payload).length / 2),
         reservedOutputTokens: 8192,
       },
-      async () => {
+      async (recordUsage) => {
         const response = await this.provider.generate(
           {
             schema,
@@ -178,8 +178,11 @@ export class VideoPreparationService {
               },
             ],
           },
-          signal
+          signal,
+          recordUsage
         );
+
+        await recordUsage(response);
 
         const parsed = translation
           ? translationSchema.parse(JSON.parse(response.text))

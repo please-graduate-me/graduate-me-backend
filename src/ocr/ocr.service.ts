@@ -236,14 +236,17 @@ export class OcrService {
                 ? { reservedCost: pageCost() }
                 : {}),
             },
-            async () => {
+            async (recordUsage) => {
               const recognized = await this.provider.recognize(
                 {
                   ...page,
                   requestId: input.requestId,
                 },
-                identity
+                identity,
+                recordUsage
               );
+
+              await recordUsage(recognized);
 
               return {
                 value: recognized,

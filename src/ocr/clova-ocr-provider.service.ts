@@ -1,3 +1,4 @@
+import type { RecordProviderUsage } from '../ai/provider-contracts.js';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { HttpError } from '../common/http-error.js';
@@ -145,12 +146,15 @@ export class ClovaOcrProviderService {
       supportedLanguages: ['en'] as const,
     };
   }
-  async recognize(input: {
-    data: Buffer;
-    width: number;
-    height: number;
-    requestId: string;
-  }): Promise<OcrResult> {
+  async recognize(
+    input: {
+      data: Buffer;
+      width: number;
+      height: number;
+      requestId: string;
+    },
+    recordUsage?: RecordProviderUsage
+  ): Promise<OcrResult> {
     if (!this.configured)
       throw new HttpError(503, 'CLOVA OCR 연결 설정이 필요합니다.');
     let url: URL;
@@ -214,11 +218,16 @@ export class ClovaOcrProviderService {
         );
       }
 
-      return parseOcrResult(
-        await boundedJson(response),
-        input.requestId,
-        input.width / input.height
-      );
+      const value = await boundedJson(response);
+
+      await recordUsage?.({
+        provider: 'naver',
+        model: this.identity().model,
+        inputTokens: null,
+        outputTokens: null,
+      });
+
+      return parseOcrResult(value, input.requestId, input.width / input.height);
     } catch (error) {
       if (error instanceof HttpError) throw error;
       throw new HttpError(

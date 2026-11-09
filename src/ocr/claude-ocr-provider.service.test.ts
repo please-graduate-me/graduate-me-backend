@@ -101,7 +101,8 @@ it('선택한 Claude만 호출하고 픽셀 영역·실제 사용량·미제공 
     requestId: 'mock',
   };
 
-  const recognized = await provider.recognize(input, identity);
+  const recordUsage = vi.fn().mockResolvedValue(undefined);
+  const recognized = await provider.recognize(input, identity, recordUsage);
 
   expect(rasterize).toHaveBeenCalledWith(input);
 
@@ -109,7 +110,9 @@ it('선택한 Claude만 호출하고 픽셀 영역·실제 사용량·미제공 
     expect.objectContaining({
       model: 'image',
       image: { mimeType: 'image/png', base64: image.data.toString('base64') },
-    })
+    }),
+    undefined,
+    recordUsage
   );
 
   expect(recognized).toMatchObject({
@@ -129,10 +132,20 @@ it('선택한 Claude만 호출하고 픽셀 영역·실제 사용량·미제공 
   expect(clova.recognize).not.toHaveBeenCalled();
 
   payload.fields[0].rect.width = 600;
+  recordUsage.mockClear();
 
-  await expect(provider.recognize(input, identity)).rejects.toMatchObject({
-    status: 502,
-  });
+  await expect(
+    provider.recognize(input, identity, recordUsage)
+  ).rejects.toMatchObject({ status: 502 });
+
+  expect(recordUsage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      provider: 'anthropic',
+      model: 'claude-mock-actual',
+      inputTokens: 1234,
+      outputTokens: 200,
+    })
+  );
 
   vi.stubEnv('OCR_PROVIDER', 'clova');
 

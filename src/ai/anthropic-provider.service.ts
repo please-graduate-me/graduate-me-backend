@@ -5,12 +5,25 @@ import type {
   ProviderInput,
   ProviderMode,
   ProviderResult,
+  RecordProviderUsage,
 } from './provider-contracts.js';
 import { providerIdentity } from './provider-config.js';
 import { readProviderJson, validateProviderInput } from './provider-http.js';
 import { anthropicSchema } from './anthropic-schema.js';
 
 const tokenCount = z.number().int().nonnegative();
+
+const usageSchema = z.object({
+  input_tokens: tokenCount,
+  output_tokens: tokenCount,
+  cache_creation_input_tokens: tokenCount.optional(),
+  cache_read_input_tokens: tokenCount.optional(),
+});
+
+const measurementSchema = z.object({
+  model: z.string().min(1).max(150),
+  usage: usageSchema.optional(),
+});
 
 const responseSchema = z.object({
   type: z.literal('message'),
@@ -26,14 +39,7 @@ const responseSchema = z.object({
     .max(100),
   stop_reason: z.string(),
   stop_details: z.object({ type: z.string().optional() }).nullish(),
-  usage: z
-    .object({
-      input_tokens: tokenCount,
-      output_tokens: tokenCount,
-      cache_creation_input_tokens: tokenCount.optional(),
-      cache_read_input_tokens: tokenCount.optional(),
-    })
-    .optional(),
+  usage: usageSchema.optional(),
 });
 
 @Injectable()
@@ -47,7 +53,8 @@ export class AnthropicProviderService {
   }
   async generate(
     input: ProviderInput,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    recordUsage?: RecordProviderUsage
   ): Promise<ProviderResult> {
     const identity = this.identity(
       input.image || input.model === 'image' ? 'image' : 'text'
@@ -138,7 +145,25 @@ export class AnthropicProviderService {
       );
     }
 
-    const parsed = responseSchema.safeParse(await readProviderJson(response));
+    const value = await readProviderJson(response);
+    const measurement = measurementSchema.safeParse(value);
+
+    if (measurement.success) {
+      const usage = measurement.data.usage;
+
+      await recordUsage?.({
+        provider: 'anthropic',
+        model: measurement.data.model,
+        inputTokens: usage
+          ? usage.input_tokens +
+            (usage.cache_creation_input_tokens ?? 0) +
+            (usage.cache_read_input_tokens ?? 0)
+          : null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
+
+    const parsed = responseSchema.safeParse(value);
 
     if (!parsed.success)
       throw new HttpError(502, 'Claude 응답 형식을 확인할 수 없습니다.');

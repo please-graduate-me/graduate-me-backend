@@ -1,3 +1,4 @@
+import type { RecordProviderUsage } from '../ai/provider-contracts.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { AnthropicProviderService } from '../ai/anthropic-provider.service.js';
@@ -56,27 +57,39 @@ export class ClaudeOcrProviderService {
       reservedOutputTokens: 8192,
     };
   }
-  async recognize(input: {
-    data: Buffer;
-    width: number;
-    height: number;
-    requestId: string;
-  }): Promise<OcrProviderResult> {
+  async recognize(
+    input: {
+      data: Buffer;
+      width: number;
+      height: number;
+      requestId: string;
+    },
+    recordUsage?: RecordProviderUsage
+  ): Promise<OcrProviderResult> {
     const image = await this.rasterizer.rasterize(input);
     const schema = outputSchema(image.width, image.height);
 
-    const generated = await this.anthropic.generate({
-      model: 'image',
-      messages: [
-        { role: 'system', content: instruction },
-        {
-          role: 'user',
-          content: JSON.stringify({ width: image.width, height: image.height }),
-        },
-      ],
-      image: { base64: image.data.toString('base64'), mimeType: 'image/png' },
-      schema: z.toJSONSchema(schema) as Record<string, unknown>,
-    });
+    const generated = await this.anthropic.generate(
+      {
+        model: 'image',
+        messages: [
+          { role: 'system', content: instruction },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              width: image.width,
+              height: image.height,
+            }),
+          },
+        ],
+        image: { base64: image.data.toString('base64'), mimeType: 'image/png' },
+        schema: z.toJSONSchema(schema) as Record<string, unknown>,
+      },
+      undefined,
+      recordUsage
+    );
+
+    await recordUsage?.(generated);
 
     let value: unknown;
 

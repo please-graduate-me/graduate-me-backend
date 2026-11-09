@@ -158,4 +158,52 @@ describe.skipIf(!testUrl)('AI 사용 한도와 중단된 요청의 저장 경계
       await db.manager.findOneBy(AIOperation, { id: lateId })
     ).toMatchObject({ status: 'failed' });
   });
+
+  it('출력 검증이 실패해도 받은 실토큰·실모델을 저장하고 중복 기록은 한 실행에 수렴한다', async () => {
+    const requestId = randomUUID();
+
+    vi.stubEnv('AI_DAILY_REQUEST_LIMIT', '100');
+    vi.stubEnv('AI_DAILY_TOKEN_LIMIT', '200000');
+    vi.stubEnv('AI_ANTHROPIC_INPUT_USD_PER_MILLION', '2');
+    vi.stubEnv('AI_ANTHROPIC_OUTPUT_USD_PER_MILLION', '10');
+
+    await expect(
+      new UsageService(db).execute(
+        {
+          ownerId: owners[1],
+          requestId,
+          provider: 'anthropic',
+          task: 'validation',
+          model: 'configured-alias',
+          sourceKey: 'source',
+          reservedOutputTokens: 8192,
+        },
+        async (recordUsage) => {
+          const measured = {
+            provider: 'anthropic' as const,
+            model: 'actual-model',
+            inputTokens: 123,
+            outputTokens: 45,
+          };
+
+          await recordUsage(measured);
+          await recordUsage(measured);
+          throw new HttpError(502, '출력 형식 검증 실패');
+        }
+      )
+    ).rejects.toMatchObject({ status: 502 });
+
+    const records = await db.manager.findBy(AIUsage, { requestId });
+
+    expect(records).toHaveLength(1);
+
+    expect(records[0]).toMatchObject({
+      status: 'failed',
+      provider: 'anthropic',
+      model: 'actual-model',
+      inputTokens: 123,
+      outputTokens: 45,
+      estimatedCost: 0.000696,
+    });
+  });
 });

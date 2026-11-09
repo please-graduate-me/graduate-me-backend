@@ -2,7 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ClovaProviderService } from './clova-provider.service.js';
 import { AnthropicProviderService } from './anthropic-provider.service.js';
 import { selectedAIProvider } from './provider-config.js';
-import type { ProviderInput, ProviderMode } from './provider-contracts.js';
+import type {
+  ProviderInput,
+  ProviderMode,
+  RecordProviderUsage,
+} from './provider-contracts.js';
 
 /** 기존 업무가 공급자 상세 타입을 직접 참조하지 않게 한다. */
 export type { ProviderInput, ProviderResult } from './provider-contracts.js';
@@ -25,7 +29,11 @@ export class ProviderService {
   get configured() {
     return this.identity().configured;
   }
-  generate(input: ProviderInput, signal?: AbortSignal) {
-    return this.selected().generate(input, signal);
+  generate(
+    input: ProviderInput,
+    signal?: AbortSignal,
+    recordUsage?: RecordProviderUsage
+  ) {
+    return this.selected().generate(input, signal, recordUsage);
   }
 }

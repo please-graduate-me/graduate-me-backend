@@ -7,6 +7,7 @@ import type {
   ProviderInput,
   ProviderMode,
   ProviderResult,
+  RecordProviderUsage,
 } from './provider-contracts.js';
 import { providerIdentity } from './provider-config.js';
 import { readProviderJson, validateProviderInput } from './provider-http.js';
@@ -17,6 +18,20 @@ const responseSchema = z.object({
     message: z.object({ content: z.string().min(1).max(500_000) }),
     finishReason: z.string().optional(),
     stopReason: z.string().optional(),
+    usage: z
+      .object({
+        promptTokens: z.number().int().nonnegative(),
+        completionTokens: z.number().int().nonnegative(),
+      })
+      .optional(),
+    inputLength: z.number().int().nonnegative().optional(),
+    outputLength: z.number().int().nonnegative().optional(),
+  }),
+});
+
+const measurementSchema = z.object({
+  status: z.object({ code: z.literal('20000') }),
+  result: z.object({
     usage: z
       .object({
         promptTokens: z.number().int().nonnegative(),
@@ -39,7 +54,8 @@ export class ClovaProviderService {
   }
   async generate(
     input: ProviderInput,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    recordUsage?: RecordProviderUsage
   ): Promise<ProviderResult> {
     const key = process.env.CLOVA_STUDIO_API_KEY?.trim();
 
@@ -147,7 +163,22 @@ export class ClovaProviderService {
       );
     }
 
-    const parsed = responseSchema.safeParse(await readProviderJson(response));
+    const value = await readProviderJson(response);
+    const measurement = measurementSchema.safeParse(value);
+
+    if (measurement.success) {
+      const result = measurement.data.result;
+
+      await recordUsage?.({
+        provider: 'naver',
+        model,
+        inputTokens: result.usage?.promptTokens ?? result.inputLength ?? null,
+        outputTokens:
+          result.usage?.completionTokens ?? result.outputLength ?? null,
+      });
+    }
+
+    const parsed = responseSchema.safeParse(value);
 
     if (!parsed.success || parsed.data.status.code !== '20000')
       throw new HttpError(502, '네이버 AI 응답 형식을 확인할 수 없습니다.');

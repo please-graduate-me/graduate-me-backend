@@ -181,8 +181,17 @@ describe('Claude 공급자의 직접 Messages 계약과 명시적 선택', () =>
 
     fetch.mockResolvedValueOnce(Response.json(message('max_tokens')));
 
-    await expect(provider.generate(input)).rejects.toMatchObject({
-      status: 502,
+    const recordUsage = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      provider.generate(input, undefined, recordUsage)
+    ).rejects.toMatchObject({ status: 502 });
+
+    expect(recordUsage).toHaveBeenCalledWith({
+      provider: 'anthropic',
+      model: 'claude-sonnet-5-5',
+      inputTokens: 19,
+      outputTokens: 8,
     });
 
     fetch.mockResolvedValueOnce(
