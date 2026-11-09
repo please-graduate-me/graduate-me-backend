@@ -8,6 +8,7 @@ export interface AIMessage {
   text: string;
   status: 'ready' | 'failed' | 'out_of_scope';
   model: string | null;
+  provider: 'naver' | 'anthropic' | null;
   citations: { quote: string }[];
   uncertainty: string | null;
   contextDescription: string | null;
@@ -41,6 +42,7 @@ export const AIMessage = new EntitySchema<AIMessage>({
       type: 'text',
       nullable: true,
     },
+    provider: { type: 'text', nullable: true },
     citations: {
       type: 'jsonb',
       default: () => "'[]'",

@@ -1,3 +1,4 @@
+import { activeProviderIdentity } from '../ai/provider-config.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
@@ -129,7 +130,7 @@ export class MaterialsService {
       capabilities: {
         explanation: true as const,
         generatedPractice: true as const,
-        aiConfigured: Boolean(process.env.CLOVA_STUDIO_API_KEY?.trim()),
+        aiConfigured: activeProviderIdentity().configured,
       },
     };
   }

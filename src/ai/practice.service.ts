@@ -108,7 +108,12 @@ export class PracticeService {
       ownerId,
       input.requestId,
       'practice_generation',
-      { ...input, source },
+      {
+        ...input,
+        source,
+        provider: this.ai.provider.identity().provider,
+        model: this.ai.provider.identity().model,
+      },
       async () => {
         // 제외·검토 중 문항과 도움을 받은 시도는 새 복습의 약점 근거에 섞지 않는다.
         const prior = await this.db
@@ -204,7 +209,7 @@ export class PracticeService {
                 source: matchingSource(payload.sourceQuote)!,
                 payload,
                 model: generated.model,
-                provider: 'naver',
+                provider: generated.provider,
                 expressionIds: expressions
                   .filter((e) =>
                     sameSource(e.source, matchingSource(payload.sourceQuote)!)

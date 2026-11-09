@@ -59,7 +59,14 @@ describe('영상의 독립적인 후속 준비', () => {
 
     const service = new VideoPreparationService(
       db as unknown as DataSource,
-      { generate } as unknown as ProviderService,
+      {
+        generate,
+        identity: () => ({
+          provider: 'naver',
+          model: 'HCX-007',
+          configured: true,
+        }),
+      } as unknown as ProviderService,
       { execute } as unknown as UsageService
     );
 

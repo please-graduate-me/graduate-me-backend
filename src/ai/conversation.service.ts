@@ -45,6 +45,7 @@ export class ConversationService {
         status: m.status,
         createdAt: m.createdAt,
         ...(m.model ? { model: m.model } : {}),
+        ...(m.provider ? { provider: m.provider } : {}),
         citations: m.citations,
         uncertainty: m.uncertainty ?? '',
         contextDescription:
@@ -96,7 +97,12 @@ export class ConversationService {
       ownerId,
       requestId,
       'chat',
-      { id, text },
+      {
+        id,
+        text,
+        provider: this.ai.provider.identity().provider,
+        model: this.ai.provider.identity().model,
+      },
       async () => {
         const { source, context, contextDescription } =
           await this.sources.context(ownerId, row.source);
@@ -148,6 +154,7 @@ export class ConversationService {
               contextDescription,
               requestId,
               model: relevance.model,
+              provider: relevance.provider,
               citations: [],
             });
           } else {
@@ -179,6 +186,7 @@ export class ConversationService {
               status: 'ready',
               requestId,
               model: answer.model,
+              provider: answer.provider,
               citations: answer.value.citations,
               uncertainty: answer.value.uncertainty,
               contextDescription,

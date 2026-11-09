@@ -139,6 +139,11 @@ describe.skipIf(!testUrl)(
 
     const provider = {
       configured: true,
+      identity: () => ({
+        provider: 'naver',
+        model: 'mock-HCX',
+        configured: true,
+      }),
       generate: generated,
     } as unknown as ProviderService;
 
@@ -751,6 +756,101 @@ describe.skipIf(!testUrl)(
       await expect(
         sourceService.resolve(owner, archive.source)
       ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('공급자·모델 변경 시 생성 캐시를 분리하고 과거 결과와 실제 사용량을 보존한다', async () => {
+      const selected = await source();
+
+      const identities = {
+        provider: 'naver' as 'naver' | 'anthropic',
+        model: 'HCX-007',
+        configured: true,
+      };
+
+      const generate = vi.fn(async () => ({
+        text: JSON.stringify({
+          translation: '번역',
+          meaning: '뜻',
+          structure: '구조',
+          concept: '개념',
+          examples: [],
+          uncertainty: '',
+          citations: [{ quote }],
+        }),
+        provider: identities.provider,
+        model: identities.model,
+        inputTokens: 12,
+        outputTokens: 8,
+      }));
+
+      const provider = {
+        identity: () => ({ ...identities }),
+        get configured() {
+          return identities.configured;
+        },
+        generate,
+      } as unknown as ProviderService;
+
+      const service = new LearningAIService(
+        db,
+        provider,
+        usage,
+        operations,
+        sourceService,
+        artifacts
+      );
+
+      const run = () =>
+        service.explain(
+          owner,
+          explanationInputSchema.parse({
+            requestId: randomUUID(),
+            source: selected,
+          })
+        );
+
+      const clova = await run();
+
+      expect((await run()).id).toBe(clova.id);
+      identities.provider = 'anthropic';
+      identities.model = 'claude-sonnet-5-5';
+      const claude = await run();
+
+      expect(claude.id).not.toBe(clova.id);
+
+      expect(claude).toMatchObject({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-5',
+      });
+
+      identities.model = 'claude-haiku-5-5';
+      const haiku = await run();
+
+      expect(haiku.id).not.toBe(claude.id);
+      identities.provider = 'naver';
+      identities.model = 'HCX-007';
+      identities.configured = false;
+      expect((await run()).id).toBe(clova.id);
+      expect(generate).toHaveBeenCalledTimes(3);
+
+      expect((await artifacts.get(owner, String(claude.id))).provider).toBe(
+        'anthropic'
+      );
+
+      const calls = await db.manager.findBy(AIUsage, {
+        ownerId: owner,
+        provider: 'anthropic',
+      });
+
+      expect(calls).toHaveLength(2);
+
+      expect(calls.map((r) => r.model)).toEqual(
+        expect.arrayContaining(['claude-sonnet-5-5', 'claude-haiku-5-5'])
+      );
+
+      expect(
+        calls.every((r) => r.inputTokens === 12 && r.outputTokens === 8)
+      ).toBe(true);
     });
   }
 );

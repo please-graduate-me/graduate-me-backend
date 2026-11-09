@@ -22,6 +22,7 @@ import {
   type preparationSchema,
 } from './contracts.js';
 import type { LearningSource } from '../learning/contracts.js';
+import type { ProviderMode, ProviderName } from './provider-contracts.js';
 
 /** 생성 출력은 원문에 없는 인용을 근거로 제시하지 못하게 한다. */
 export function validateCitations(
@@ -62,19 +63,20 @@ export class LearningAIService {
   }
   capabilities() {
     return {
-      configured: this.provider.configured,
+      configured: this.provider.identity().configured,
+      provider: this.provider.identity().provider,
       models: {
-        text: process.env.CLOVA_TEXT_MODEL || 'HCX-007',
-        image: process.env.CLOVA_IMAGE_MODEL || 'HCX-005',
+        text: this.provider.identity().model,
+        image: this.provider.identity('image').model,
       },
       limits: aiLimits(),
     };
   }
-  ensureConfigured() {
-    if (!this.provider.configured)
+  ensureConfigured(mode: ProviderMode = 'text') {
+    if (!this.provider.identity(mode).configured)
       throw new HttpError(
         503,
-        '네이버 AI 연결 설정이 필요합니다. 저장된 자료와 기존 결과는 계속 이용할 수 있습니다.'
+        '선택한 AI 공급자의 연결 설정이 필요합니다. 저장된 자료와 기존 결과는 계속 이용할 수 있습니다.'
       );
   }
   async generate<T>(
@@ -86,23 +88,28 @@ export class LearningAIService {
     system: string,
     user: string,
     image?: ProviderInput['image']
-  ): Promise<{ value: T; model: string }> {
-    this.ensureConfigured();
+  ): Promise<{ value: T; model: string; provider: ProviderName }> {
+    const mode = image ? 'image' : 'text';
 
-    const model = image
-      ? process.env.CLOVA_IMAGE_MODEL || 'HCX-005'
-      : process.env.CLOVA_TEXT_MODEL || 'HCX-007';
+    this.ensureConfigured(mode);
+    const identity = this.provider.identity(mode);
+    const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
 
     return this.usage.execute(
       {
         ownerId,
-        provider: 'naver',
+        provider: identity.provider,
         task,
-        model,
+        model: identity.model,
         sourceKey,
         requestId,
-        estimatedInputTokens: Math.ceil((system.length + user.length) / 2),
-        reservedOutputTokens: image ? 4096 : 8192,
+        estimatedInputTokens:
+          Math.ceil(
+            (system.length + user.length + JSON.stringify(jsonSchema).length) /
+              2
+          ) + (image ? 12000 : 0),
+        reservedOutputTokens:
+          identity.provider === 'anthropic' ? 8192 : image ? 4096 : 8192,
       },
       async () => {
         const raw = await this.provider.generate({
@@ -111,7 +118,7 @@ export class LearningAIService {
             { role: 'system', content: system },
             { role: 'user', content: user },
           ],
-          schema: z.toJSONSchema(schema) as Record<string, unknown>,
+          schema: jsonSchema,
           ...(image ? { image } : {}),
         });
 
@@ -136,7 +143,13 @@ export class LearningAIService {
           );
 
         return {
-          value: { value: result.data, model: raw.model },
+          value: {
+            value: result.data,
+            model: raw.model,
+            provider: raw.provider,
+          },
+          model: raw.model,
+          provider: raw.provider,
           inputTokens: raw.inputTokens,
           outputTokens: raw.outputTokens,
         };
@@ -156,7 +169,11 @@ export class LearningAIService {
     const explanationLanguage =
       input.explanationLanguage ?? preferences.explanationLanguage;
 
+    const identity = this.provider.identity(input.image ? 'image' : 'text');
+
     const key = inputFingerprint({
+      provider: identity.provider,
+      model: identity.model,
       source: { ...source, rects: undefined },
       mode: input.mode,
       explanationLanguage,
@@ -180,6 +197,8 @@ export class LearningAIService {
                   }
                 : source,
             task,
+            provider: identity.provider,
+            model: identity.model,
           })
         : key;
 
@@ -189,7 +208,7 @@ export class LearningAIService {
     });
 
     if (existing) return this.artifacts.dto(existing);
-    this.ensureConfigured();
+    this.ensureConfigured(input.image ? 'image' : 'text');
 
     return this.operations.run(
       ownerId,
@@ -249,7 +268,7 @@ export class LearningAIService {
               evidenceType: input.image ? 'page_image_and_text' : 'text_only',
             },
             model: generated.model,
-            provider: 'naver',
+            provider: generated.provider,
             cacheKey: key,
             batchId: input.requestId,
           })
@@ -282,7 +301,13 @@ export class LearningAIService {
       ownerId,
       input.requestId,
       'prepare_range',
-      { id, version: material.version, ...input },
+      {
+        id,
+        version: material.version,
+        ...input,
+        provider: this.provider.identity().provider,
+        model: this.provider.identity().model,
+      },
       async () => {
         const items: Record<string, unknown>[] = [],
           failed: { page: number; error: string }[] = [];

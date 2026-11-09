@@ -151,9 +151,9 @@ export class VideoPreparationService {
     const result = await this.usage.execute(
       {
         ownerId: video.ownerId,
-        provider: 'naver',
+        provider: this.provider.identity().provider,
         task: translation ? 'video_translation' : 'video_blanks',
-        model: process.env.CLOVA_TEXT_MODEL || 'HCX-007',
+        model: this.provider.identity().model,
         sourceKey: `video:${video.id}:${video.analysisVersion}:${stage}:${batchIndex}`,
         estimatedInputTokens: Math.ceil(JSON.stringify(payload).length / 2),
         reservedOutputTokens: 8192,
@@ -212,6 +212,8 @@ export class VideoPreparationService {
 
         return {
           value: parsed.segments,
+          model: response.model,
+          provider: response.provider,
           inputTokens: response.inputTokens,
           outputTokens: response.outputTokens,
         };

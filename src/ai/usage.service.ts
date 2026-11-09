@@ -32,11 +32,16 @@ export function aiLimits() {
 
 /** 실제 청구 조회값과 구분할 환경설정 단가만 사용한다. */
 export function estimatedCost(
-  provider: 'naver' | 'gemini',
+  provider: AIUsage['provider'],
   input: number,
   output: number
 ) {
-  const prefix = provider === 'naver' ? 'AI_NAVER' : 'AI_GEMINI';
+  const prefix =
+    provider === 'naver'
+      ? 'AI_NAVER'
+      : provider === 'anthropic'
+        ? 'AI_ANTHROPIC'
+        : 'AI_GEMINI';
 
   const a = process.env[`${prefix}_INPUT_USD_PER_MILLION`],
     b = process.env[`${prefix}_OUTPUT_USD_PER_MILLION`];
@@ -57,7 +62,7 @@ export function estimatedCost(
 /** 공급자 호출을 작업 목적과 요청자 단위로 기록한다. */
 export interface UsageInput {
   ownerId: string | null;
-  provider: 'naver' | 'gemini';
+  provider: AIUsage['provider'];
   task: string;
   model: string;
   sourceKey: string;
@@ -77,6 +82,8 @@ export class UsageService {
       value: T;
       inputTokens?: number | null;
       outputTokens?: number | null;
+      model?: string;
+      provider?: AIUsage['provider'];
     }>
   ): Promise<T> {
     const limits = aiLimits();
@@ -209,6 +216,8 @@ export class UsageService {
         { id: row.id },
         {
           status: 'succeeded',
+          model: result.model ?? input.model,
+          provider: result.provider ?? input.provider,
           inputTokens,
           outputTokens,
           elapsedMs: Date.now() - start.getTime(),
@@ -216,7 +225,11 @@ export class UsageService {
             input.reservedCost !== undefined
               ? reservedCost
               : inputTokens !== null && outputTokens !== null
-                ? estimatedCost(input.provider, inputTokens, outputTokens)
+                ? estimatedCost(
+                    result.provider ?? input.provider,
+                    inputTokens,
+                    outputTokens
+                  )
                 : reservedCost,
         }
       );

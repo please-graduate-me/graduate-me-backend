@@ -4,7 +4,7 @@ import { EntitySchema } from 'typeorm';
 export interface AIUsage {
   id: string;
   ownerId: string | null;
-  provider: 'naver' | 'gemini';
+  provider: 'naver' | 'gemini' | 'anthropic';
   task: string;
   model: string;
   sourceKey: string;

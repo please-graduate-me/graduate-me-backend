@@ -1,3 +1,4 @@
+import { AIMessageProvider1794223000500 } from './migrations/1794223000500-ai-message-provider.js';
 import { MaterialOcr1794223000300 } from './migrations/1794223000300-material-ocr.js';
 import { ConversationEvidence1794223000200 } from './migrations/1794223000200-conversation-evidence.js';
 import { RemoveAudioProcessing1794146400000 } from './migrations/1794146400000-remove-audio-processing.js';
@@ -33,4 +34,5 @@ export const migrations = [
   MaterialVersions1794223000100,
   ConversationEvidence1794223000200,
   MaterialOcr1794223000300,
+  AIMessageProvider1794223000500,
 ];
