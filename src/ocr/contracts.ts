@@ -17,7 +17,7 @@ export const ocrQuerySchema = z.object({
 export interface OcrField {
   text: string;
   rect: { x: number; y: number; width: number; height: number };
-  confidence: number;
+  confidence: number | null;
   lineBreak: boolean;
 }
 
@@ -28,4 +28,21 @@ export interface OcrResult {
   width: number;
   height: number;
   lowConfidenceCount: number;
+}
+
+/** 인식 공급자의 실제 사용량은 페이지 결과와 분리해 한 번만 집계한다. */
+export interface OcrProviderResult {
+  result: OcrResult;
+  provider: 'naver' | 'anthropic';
+  model: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+/** 공급자별 지원 언어와 생성 모델을 설정 변경 전에 확인한다. */
+export interface OcrProviderIdentity {
+  provider: 'naver' | 'anthropic';
+  model: string;
+  configured: boolean;
+  supportedLanguages: readonly ('en' | 'th')[];
 }

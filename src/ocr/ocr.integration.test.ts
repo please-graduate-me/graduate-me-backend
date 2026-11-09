@@ -18,7 +18,11 @@ import { ProviderService } from '../ai/provider.service.js';
 import { HttpError } from '../common/http-error.js';
 import { OcrProviderService } from './ocr-provider.service.js';
 import { OcrService } from './ocr.service.js';
-import type { OcrResult } from './contracts.js';
+import type {
+  OcrResult,
+  OcrProviderResult,
+  OcrProviderIdentity,
+} from './contracts.js';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -51,11 +55,33 @@ describe.skipIf(!url)('PDF OCR 저장·권한·재사용과 학습 원문 연결
     lowConfidenceCount: 1,
   };
 
-  const recognize = vi.fn(async () => result);
+  let identity: OcrProviderIdentity = {
+    provider: 'naver',
+    model: 'CLOVA OCR General V2',
+    configured: true,
+    supportedLanguages: ['en'],
+  };
+
+  const providerResult = (): OcrProviderResult => ({
+    result,
+    provider: identity.provider,
+    model: identity.model,
+    inputTokens: null,
+    outputTokens: null,
+  });
+
+  const recognize = vi.fn(async () => providerResult());
 
   const ocr = new OcrService(
     db,
-    { configured: true, recognize } as unknown as OcrProviderService,
+    {
+      identity: () => identity,
+      reservation: () =>
+        identity.provider === 'anthropic'
+          ? { estimatedInputTokens: 13000, reservedOutputTokens: 8192 }
+          : { estimatedInputTokens: 0, reservedOutputTokens: 0 },
+      recognize,
+    } as unknown as OcrProviderService,
     usage,
     operations
   );
@@ -75,6 +101,8 @@ describe.skipIf(!url)('PDF OCR 저장·권한·재사용과 학습 원문 연결
     vi.stubEnv('OCR_ESTIMATED_USD_PER_PAGE', '0.012');
     vi.stubEnv('AI_NAVER_INPUT_USD_PER_MILLION', '900');
     vi.stubEnv('AI_NAVER_OUTPUT_USD_PER_MILLION', '900');
+    vi.stubEnv('AI_ANTHROPIC_INPUT_USD_PER_MILLION', '');
+    vi.stubEnv('AI_ANTHROPIC_OUTPUT_USD_PER_MILLION', '');
     await db.manager.insert(User, [{ id: ownerId }, { id: readerId }]);
     const pdf = await PDFDocument.create();
 
@@ -106,7 +134,7 @@ describe.skipIf(!url)('PDF OCR 저장·권한·재사용과 학습 원문 연결
     ).toBeNull();
 
     expect(recognize).not.toHaveBeenCalled();
-    let complete!: (value: OcrResult) => void;
+    let complete!: (value: OcrProviderResult) => void;
 
     recognize.mockImplementationOnce(
       () =>
@@ -166,7 +194,7 @@ describe.skipIf(!url)('PDF OCR 저장·권한·재사용과 학습 원문 연결
       })
     ).rejects.toMatchObject({ status: 403 });
 
-    complete(result);
+    complete(providerResult());
     const ready = await running;
 
     expect(ready.item).toMatchObject({
@@ -261,7 +289,15 @@ describe.skipIf(!url)('PDF OCR 저장·권한·재사용과 학습 원문 연결
 
     const ai = new LearningAIService(
       db,
-      { configured: true, generate } as unknown as ProviderService,
+      {
+        identity: () => ({
+          provider: 'naver',
+          model: 'HCX-007',
+          configured: true,
+        }),
+        configured: true,
+        generate,
+      } as unknown as ProviderService,
       usage,
       operations,
       sources,
@@ -451,5 +487,136 @@ describe.skipIf(!url)('PDF OCR 저장·권한·재사용과 학습 원문 연결
     ).rejects.toMatchObject({ status: 422 });
 
     expect(recognize).toHaveBeenCalledTimes(calls);
+  });
+
+  it('Claude 전환은 실제 토큰·미제공 신뢰도를 기록하고 이전 결과와 요청 식별자를 보존한다', async () => {
+    identity = {
+      provider: 'anthropic',
+      model: 'claude-mock-v1',
+      configured: true,
+      supportedLanguages: ['en', 'th'],
+    };
+
+    vi.stubEnv('AI_DAILY_REQUEST_LIMIT', '100');
+    vi.stubEnv('AI_DAILY_TOKEN_LIMIT', '100');
+    await age();
+    const calls = recognize.mock.calls.length;
+
+    await expect(
+      ocr.recognize(ownerId, materialId, {
+        requestId: randomUUID(),
+        version: 3,
+        page: 1,
+      })
+    ).rejects.toMatchObject({ status: 429 });
+
+    expect(recognize).toHaveBeenCalledTimes(calls);
+    vi.stubEnv('AI_DAILY_TOKEN_LIMIT', '100000');
+    await age();
+
+    const claudeResult: OcrProviderResult = {
+      result: {
+        ...result,
+        text: 'สวัสดี',
+        fields: result.fields.map((f) => ({
+          ...f,
+          text: 'สวัสดี',
+          confidence: null,
+        })),
+        lowConfidenceCount: 0,
+      },
+      provider: 'anthropic',
+      model: identity.model,
+      inputTokens: 1200,
+      outputTokens: 150,
+    };
+
+    recognize.mockResolvedValueOnce(claudeResult);
+
+    const ready = await ocr.recognize(ownerId, materialId, {
+      requestId: randomUUID(),
+      version: 3,
+      page: 1,
+    });
+
+    expect(ready).toMatchObject({
+      provider: 'anthropic',
+      supportedLanguages: ['en', 'th'],
+      languageSupported: true,
+      item: {
+        provider: 'anthropic',
+        model: 'claude-mock-v1',
+        text: 'สวัสดี',
+        lowConfidenceCount: 0,
+        fields: [expect.objectContaining({ confidence: null })],
+      },
+    });
+
+    expect(
+      (await ocr.get(ownerId, materialId, { version: 1, page: 1 })).item
+    ).toMatchObject({
+      id: ocrId,
+      provider: 'naver',
+      model: 'CLOVA OCR General V2',
+      text: result.text,
+    });
+
+    const measured = await db.manager.findOneByOrFail(AIUsage, {
+      ownerId,
+      provider: 'anthropic',
+      status: 'succeeded',
+    });
+
+    expect(measured).toMatchObject({
+      inputTokens: 1200,
+      outputTokens: 150,
+      reservedTokens: 21192,
+      estimatedCost: null,
+    });
+
+    await age();
+    recognize.mockRejectedValueOnce(new HttpError(502, '모의 인식 실패'));
+    const failedId = randomUUID();
+
+    await expect(
+      ocr.recognize(ownerId, materialId, {
+        requestId: failedId,
+        version: 3,
+        page: 2,
+      })
+    ).rejects.toMatchObject({ status: 502 });
+
+    identity = { ...identity, model: 'claude-mock-v2' };
+
+    await expect(
+      ocr.recognize(ownerId, materialId, {
+        requestId: failedId,
+        version: 3,
+        page: 2,
+      })
+    ).rejects.toMatchObject({ status: 409 });
+
+    identity = {
+      provider: 'naver',
+      model: 'CLOVA OCR General V2',
+      configured: false,
+      supportedLanguages: ['en'],
+    };
+
+    const beforeReuse = recognize.mock.calls.length;
+
+    expect(
+      await ocr.recognize(ownerId, materialId, {
+        requestId: randomUUID(),
+        version: 3,
+        page: 1,
+      })
+    ).toMatchObject({
+      provider: 'naver',
+      languageSupported: false,
+      item: { provider: 'anthropic', text: 'สวัสดี' },
+    });
+
+    expect(recognize).toHaveBeenCalledTimes(beforeReuse);
   });
 });

@@ -21,6 +21,8 @@ function pageDto(row: MaterialOcrPage | null) {
     version: row.version,
     page: row.page,
     status: row.status,
+    provider: row.provider,
+    model: row.model,
     text: row.text,
     fields: row.fields,
     width: row.width,
@@ -53,10 +55,14 @@ export class OcrService {
     @Inject(OperationService) private readonly operations: OperationService
   ) {}
   private dto(language: 'en' | 'th', row: MaterialOcrPage | null) {
+    const identity = this.provider.identity();
+
     return {
-      configured: this.provider.configured,
-      supportedLanguages: ['en'] as const,
-      languageSupported: language === 'en',
+      provider: identity.provider,
+      model: identity.model,
+      configured: identity.configured,
+      supportedLanguages: identity.supportedLanguages,
+      languageSupported: identity.supportedLanguages.includes(language),
       item: pageDto(row),
     };
   }
@@ -117,25 +123,27 @@ export class OcrService {
       );
     if (input.page > material.pages.length)
       throw new HttpError(400, 'PDF 페이지 범위를 확인해 주세요.');
-    if (material.language !== 'en')
-      throw new HttpError(
-        422,
-        '이 서비스의 OCR은 영어 PDF를 지원합니다. 태국어 문서는 추출된 원문 텍스트로 학습해 주세요.'
-      );
     const key = { materialId, version: input.version, page: input.page };
     const existing = await this.db.manager.findOneBy(MaterialOcrPage, key);
 
     if (existing?.status === 'ready')
       return this.dto(material.language, existing);
-    if (!this.provider.configured)
-      throw new HttpError(503, 'CLOVA OCR 연결 설정이 필요합니다.');
+    const identity = this.provider.identity();
+
+    if (!identity.supportedLanguages.includes(material.language))
+      throw new HttpError(
+        422,
+        '선택한 OCR 공급자가 이 자료의 언어를 지원하지 않습니다.'
+      );
+    if (!identity.configured)
+      throw new HttpError(503, '선택한 OCR 공급자의 연결 설정이 필요합니다.');
     await this.stopAbandoned();
 
     const item = await this.operations.run(
       userId,
       input.requestId,
       'pdf_ocr',
-      key,
+      { ...key, provider: identity.provider, model: identity.model },
       async () => {
         const claim = await this.db.transaction(async (tx) => {
           await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
@@ -176,6 +184,8 @@ export class OcrService {
           const started = {
             ...key,
             requestId: input.requestId,
+            provider: identity.provider,
+            model: identity.model,
             status: 'running' as const,
             text: '',
             fields: [],
@@ -216,29 +226,45 @@ export class OcrService {
           const result = await this.usage.execute(
             {
               ownerId: userId,
-              provider: 'naver',
+              provider: identity.provider,
               task: 'pdf_ocr',
-              model: 'CLOVA OCR General V2',
+              model: identity.model,
               sourceKey: `pdf:${materialId}:${input.version}:${input.page}`,
               requestId: input.requestId,
-              estimatedInputTokens: 0,
-              reservedOutputTokens: 0,
-              reservedCost: pageCost(),
+              ...this.provider.reservation(identity),
+              ...(identity.provider === 'naver'
+                ? { reservedCost: pageCost() }
+                : {}),
             },
-            async () => ({
-              value: await this.provider.recognize({
-                ...page,
-                requestId: input.requestId,
-              }),
-              inputTokens: null,
-              outputTokens: null,
-            })
+            async () => {
+              const recognized = await this.provider.recognize(
+                {
+                  ...page,
+                  requestId: input.requestId,
+                },
+                identity
+              );
+
+              return {
+                value: recognized,
+                provider: recognized.provider,
+                model: recognized.model,
+                inputTokens: recognized.inputTokens,
+                outputTokens: recognized.outputTokens,
+              };
+            }
           );
 
           const saved = await this.db.manager.update(
             MaterialOcrPage,
             { id: claim.row.id, status: 'running', requestId: input.requestId },
-            { ...result, status: 'ready', error: null }
+            {
+              ...result.result,
+              provider: result.provider,
+              model: result.model,
+              status: 'ready',
+              error: null,
+            }
           );
 
           if (!saved.affected)

@@ -8,6 +8,8 @@ export interface MaterialOcrPage {
   version: number;
   page: number;
   requestId: string;
+  provider: 'naver' | 'anthropic';
+  model: string;
   status: 'running' | 'ready' | 'failed';
   text: string;
   fields: OcrField[];
@@ -29,6 +31,8 @@ export const MaterialOcrPage = new EntitySchema<MaterialOcrPage>({
     version: { type: 'integer' },
     page: { type: 'integer' },
     requestId: { type: 'text' },
+    provider: { type: 'text', default: 'naver' },
+    model: { type: 'text', default: 'CLOVA OCR General V2' },
     status: { type: 'text' },
     text: { type: 'text', default: '' },
     fields: { type: 'jsonb', default: () => "'[]'" },

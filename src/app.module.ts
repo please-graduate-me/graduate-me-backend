@@ -3,6 +3,9 @@ import { AnthropicProviderService } from './ai/anthropic-provider.service.js';
 import { OcrController } from './ocr/ocr.controller.js';
 import { OcrService } from './ocr/ocr.service.js';
 import { OcrProviderService } from './ocr/ocr-provider.service.js';
+import { ClovaOcrProviderService } from './ocr/clova-ocr-provider.service.js';
+import { ClaudeOcrProviderService } from './ocr/claude-ocr-provider.service.js';
+import { PdfRasterizerService } from './ocr/pdf-rasterizer.service.js';
 import { DemoController } from './videos/demo.controller.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
@@ -73,6 +76,9 @@ import { MaterialAccessService } from './admin/material-access.service.js';
   providers: [
     OcrService,
     OcrProviderService,
+    ClovaOcrProviderService,
+    ClaudeOcrProviderService,
+    PdfRasterizerService,
     AuthService,
     AuthGuard,
     VideosService,

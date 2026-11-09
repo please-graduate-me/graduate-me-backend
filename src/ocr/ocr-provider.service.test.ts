@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OcrProviderService, parseOcrResult } from './ocr-provider.service.js';
+import {
+  ClovaOcrProviderService,
+  parseOcrResult,
+} from './clova-ocr-provider.service.js';
 import { extractOcrPage } from './pdf-page.js';
 import { HttpError } from '../common/http-error.js';
 
@@ -74,7 +77,7 @@ describe('저장 PDF 한 페이지와 CLOVA OCR General V2', () => {
 
     vi.stubGlobal('fetch', fetch);
 
-    const result = await new OcrProviderService().recognize({
+    const result = await new ClovaOcrProviderService().recognize({
       ...page,
       requestId,
     });
@@ -140,7 +143,7 @@ describe('저장 PDF 한 페이지와 CLOVA OCR General V2', () => {
     };
 
     await expect(
-      new OcrProviderService().recognize(input)
+      new ClovaOcrProviderService().recognize(input)
     ).rejects.toMatchObject({ status: 503 });
 
     expect(fetch).not.toHaveBeenCalled();
@@ -151,7 +154,7 @@ describe('저장 PDF 한 페이지와 CLOVA OCR General V2', () => {
     );
 
     await expect(
-      new OcrProviderService().recognize(input)
+      new ClovaOcrProviderService().recognize(input)
     ).rejects.toMatchObject({ status: 429 });
 
     expect(fetch).toHaveBeenCalledTimes(1);
