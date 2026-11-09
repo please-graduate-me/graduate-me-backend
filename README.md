@@ -1,6 +1,6 @@
 # graduate-me-backend
 
-NestJS API, PostgreSQL 스키마와 마이그레이션, 영상 분석 작업 관리자를 관리합니다. NestJS worker가 YouTube Data API와 Gemini API를 직접 호출합니다.
+NestJS API, PostgreSQL 스키마와 마이그레이션, 영상 분석 작업 관리자를 관리합니다. API는 저장형 AI 설명·대화·적용 연습을 CLOVA Studio와 연결하고, NestJS worker는 YouTube Data API·Gemini 전사와 CLOVA Studio의 영상 번역·빈칸 준비를 처리합니다.
 
 ## 저장소 배치
 
@@ -14,11 +14,11 @@ codding/
 
 ## 원문 학습과 admin 작업 공간
 
-학생 웹은 `/api/materials`, `/api/expressions`, `/api/questions`, `/api/practice/attempts`, `/api/learning/*`를 사용합니다. PDF는 10MB·200페이지 이하로 등록하고, 브라우저에서 추출한 페이지 텍스트를 원본과 함께 저장합니다. OCR·AI 해설·생성 문제는 아직 연결하지 않으며 지원 여부를 응답에 명시합니다. 표현 연습은 자가점검으로 기록하고 당시 표현·뜻·원문 근거를 보존합니다.
+학생 웹은 `/api/materials`, `/api/expressions`, `/api/questions`, `/api/practice/attempts`, `/api/learning/*`를 사용합니다. PDF는 10MB·200페이지 이하로 등록하고, 브라우저에서 추출한 페이지 텍스트를 원본과 함께 저장합니다. PDF 선택 위치의 하이라이트·메모와 발췌 공유를 저장합니다. 원문 근거의 AI 설명·비공개 대화·생성 적용 연습은 `/api/ai/*`에 연결하며, 모델 미설정 상태는 생성 요청에서 명확히 안내합니다. OCR은 후속 범위입니다. 표현 연습은 자가점검으로, 생성 문제는 객관식·단답형 서버 채점과 서술형 AI 피드백으로 구분하고 당시 문제·답안·정답·원문 버전을 보존합니다.
 
 별도 관리자 웹은 `/api/admin/workspace/*`를 사용합니다. 운영자는 `ADMIN_EMAILS`로 지정하고, 도우미는 운영 화면에서 기존 Google 로그인 계정에 담당 언어·자료·검토·수정 요청 권한을 부여합니다. 도우미는 현재 권한 범위와 배정 질문이 모두 일치할 때만 접근합니다. 학생에게는 게시한 답변만 반환하고 초안·내부 메모·내부 이력은 반환하지 않습니다. 도우미나 운영자에게도 질문자가 공유하지 않은 개인 PDF 원본·메모를 제공하지 않습니다.
 
-검토 요청에는 구절·설명·문제의 대상과 버전, 처리 사유를 저장합니다. 아직 없는 설명·문제 저장소를 수정한 것처럼 처리하지 않습니다. 사용량 화면은 실제 영상 처리 작업만 표시하고 비용·토큰 미집계 상태를 유지합니다. 수동 분석 재시도 API는 작업을 다시 생성하지 않고 `410`을 반환합니다.
+검토 요청에는 구절·설명·문제의 대상과 버전, 처리 사유를 저장합니다. 공유된 대상만 실제 수정·검토할 수 있으며 수정 시 새 버전과 영향 범위를 남깁니다. 과거 풀이와 원문 스냅샷은 유지합니다. 사용량 화면은 실제 공급자 실행의 상태·토큰·시간을 표시하고, 추정 비용과 미집계 실청구 비용을 구분합니다. 수동 영상 분석 재시도 API는 작업을 다시 생성하지 않고 `410`을 반환합니다.
 
 `AUTH_URL`은 학생 웹, `ADMIN_URL`은 별도 관리자 웹의 공개 주소입니다. 상태 변경 요청과 로그인 후 이동은 이 두 출처만 허용합니다. 두 앱이 다른 호스트를 사용할 경우 OAuth 콜백과 쿠키 범위는 배포 도메인에 맞춰 설정해야 합니다. 환경변수 주입과 실행은 Compose가 담당합니다.
 
@@ -29,7 +29,7 @@ codding/
 ```sh
 pnpm install --frozen-lockfile
 cp .env.example .env
-# .env에 인증 설정, GEMINI_API_KEY와 YOUTUBE_API_KEY를 입력합니다.
+# .env에 인증 설정과 사용할 공급자 키를 입력합니다.
 pnpm dev
 ```
 
@@ -70,7 +70,7 @@ DB 작업도 실행 중인 API 컨테이너에서 수행합니다.
 
 ```sh
 docker compose exec api pnpm db:migrate
-docker compose restart worker
+# 실제 대기 작업을 처리할 때만 worker를 시작하거나 재시작합니다.
 ```
 
 통합 테스트는 이름이 `_test`로 끝나는 별도 DB에서만 실행합니다. 아래 구성은 포트를 공개하지 않는 임시 PostgreSQL을 만들고 마이그레이션과 전체 테스트를 실행합니다. 기존 개발 DB와 볼륨은 사용하지 않습니다.
@@ -82,13 +82,13 @@ docker compose -f compose.test.yaml down
 
 `TEST_DATABASE_URL`이 없으면 DB 통합 테스트는 건너뜁니다. 외부 API는 단위 테스트에서 대체합니다. 호스트에서 테스트 DB를 사용할 때는 컨테이너와 같은 `TZ=UTC`로 실행해 시간대 없는 DB 시각 비교를 맞춥니다. 테스트는 `_test`로 끝나는 별도 DB에서만 수행하며 worker 프로세스나 실제 AI 모델을 실행하지 않습니다.
 
-worker에만 `GEMINI_API_KEY`, `YOUTUBE_API_KEY`, `GEMINI_MODEL`을 주입합니다. YouTube Data API v3를 활성화해야 하며 모델 기본값은 `gemini-3.8-flash`입니다. 사용할 수 있는 모델은 키와 프로젝트에 따라 확인하고 환경변수로 변경합니다. 키는 브라우저와 API 컨테이너에 전달하지 않습니다.
+`CLOVA_STUDIO_API_KEY`는 API와 worker에만 전달합니다. 기본 텍스트 모델은 `HCX-007`, 페이지 이미지 모델은 `HCX-005`이며 `CLOVA_TEXT_MODEL`, `CLOVA_IMAGE_MODEL`, `CLOVA_STUDIO_BASE_URL`로 설정합니다. 공식 HTTPS 주소와 지원 모델만 허용합니다. `GEMINI_API_KEY`, `YOUTUBE_API_KEY`, `GEMINI_MODEL`은 전사를 담당하는 worker에만 전달하고 YouTube Data API v3를 활성화합니다. 공급자 키를 학생 웹이나 관리자 웹에 전달하지 않습니다.
 
-worker는 공식 영상 메타데이터로 공개 여부, 임베드 가능 여부와 15분 제한을 확인한 뒤 Gemini에 유튜브 URL과 JSON 전사 요청을 보냅니다. 구절 시간·순서·텍스트를 검증하고 성공 결과만 기존 Segment 테이블에 저장합니다. 외부 API의 429·5xx, 통신 실패와 잘못된 출력은 기존 최대 3회 재시도를 사용합니다. 실행 중 취소와 15분 타임아웃도 전달합니다. 취소 전에 공급자가 처리한 요청은 과금될 수 있습니다.
+`AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_CONCURRENT_REQUEST_LIMIT`는 계정별 UTC 일일 요청·토큰·동시 실행 한도입니다. `AI_PREPARATION_PAGE_LIMIT`는 한 번에 준비할 PDF 페이지 수를 제한합니다. 공급자의 토큰 집계가 누락되거나 처리가 중단되면 예약 토큰을 보존해 한도 우회를 막습니다. `AI_DAILY_BUDGET_USD`가 0보다 크면 공급자별 `AI_NAVER_*_USD_PER_MILLION`, `AI_GEMINI_*_USD_PER_MILLION` 입력·출력 단가 설정을 함께 사용하며, 단가가 없으면 생성을 차단합니다. 단가가 비어 있으면 비용 표시는 미집계이고 실청구 조회값을 추측하지 않습니다.
 
-이번 연결은 기존 영어 받아쓰기 계약을 유지합니다. 번역·문맥 설명·다국어 채점·계정별 분석 한도는 포함하지 않습니다. 단어별 정렬 정보는 생성하지 않으며 `words`는 빈 배열입니다.
+worker는 공식 영상 메타데이터로 공개·임베드 가능 여부와 30분 제한을 확인하고 영어·태국어 전사를 요청합니다. 검증된 전사가 준비되면 먼저 학습에 제공하고 번역과 빈칸 후보를 독립적으로 준비합니다. 같은 영상·언어·분석 버전의 결과를 재사용하며 공급자 오류와 잘못된 출력은 자동 재시도하지 않습니다. 기존 답안은 당시 구절·규칙·빈칸 비율·도움 사용 스냅샷으로 보존합니다.
 
-실제 전사 정확도와 구절 반복 재생의 시간 정밀도, 처리 시간과 비용은 키를 설정한 뒤 실제 영상으로 확인해야 합니다. JSON 검증만으로 실제 발화와의 일치를 보장하지 않습니다.
+AI 생성은 사용자의 명시적 생성 요청 또는 등록한 영상의 최초 준비에서만 수행합니다. 조회·기존 문제 재풀이·객관식 및 단답형 채점은 AI를 호출하지 않습니다. PDF 최초 준비의 실패 페이지도 자동 재생성하지 않습니다. 실제 전사·설명 품질과 시간·비용은 실제 모델을 호출해야 확인할 수 있으며, 자동 검증은 모의 응답을 사용합니다. worker 시작은 기존 대기 작업을 실제 처리할 수 있으므로 별도 권한 없이 검증 목적으로 실행하지 않습니다.
 
 공식 문서: [Gemini 유튜브 영상 입력](https://ai.google.dev/gemini-api/docs/video-understanding#youtube), [구조화된 출력](https://ai.google.dev/gemini-api/docs/structured-output), [YouTube 영상 메타데이터](https://developers.google.com/youtube/v3/docs/videos).
 
