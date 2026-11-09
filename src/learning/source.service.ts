@@ -7,9 +7,9 @@ import { Video } from '../database/entities/Video.entity.js';
 import { HttpError } from '../common/http-error.js';
 import type { LearningSource, SourceInput } from './contracts.js';
 
-/** PDF 줄바꿈과 영상 자막의 연속 공백 차이만 무시한다. */
+/** PDF 글자 조각 사이의 배치 공백을 제외하고 발췌 포함 여부를 비교한다. */
 export function normalizedExcerpt(value: string) {
-  return value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+  return value.normalize('NFKC').replace(/\s+/g, '');
 }
 
 @Injectable()
