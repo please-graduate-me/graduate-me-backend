@@ -10,6 +10,31 @@ import { LearningAIService, validateCitations } from './learning-ai.service.js';
 import { OperationService } from './operation.service.js';
 import type { SourceQuery } from './contracts.js';
 
+function boundedHistory(rows: Pick<AIMessage, 'role' | 'text' | 'status'>[]) {
+  const messages: { role: 'user' | 'assistant'; text: string }[] = [];
+  let remaining = 32000 - rows.length - 2;
+
+  // 최신 대화부터 예산을 배분하고 근거 배열·실패 안내를 다음 답변에 반복하지 않는다.
+  for (const row of rows) {
+    if (row.status !== 'ready') continue;
+    if (remaining <= 0) break;
+    let text = row.text.slice(-remaining);
+    let encodedLength = JSON.stringify({ role: row.role, text }).length;
+
+    // 제어 문자 이스케이프도 실제 전송 예산에 포함한다.
+    while (text && encodedLength > remaining) {
+      text = text.slice(Math.ceil(text.length / 2));
+      encodedLength = JSON.stringify({ role: row.role, text }).length;
+    }
+
+    if (!text) break;
+    messages.push({ role: row.role, text });
+    remaining -= encodedLength;
+  }
+
+  return messages.reverse();
+}
+
 @Injectable()
 /** 개인 AI 대화는 선택 출처와 자료 버전에 고정하고 다시 열 때 생성하지 않는다. */
 export class ConversationService {
@@ -107,11 +132,13 @@ export class ConversationService {
         const { source, context, contextDescription } =
           await this.sources.context(ownerId, row.source);
 
-        const history = await this.db.manager.find(AIMessage, {
+        const historyRows = await this.db.manager.find(AIMessage, {
           where: { conversationId: id },
-          order: { createdAt: 'DESC' },
+          order: { createdAt: 'DESC', id: 'DESC' },
           take: 12,
         });
+
+        const history = boundedHistory(historyRows);
 
         const stored = await this.db.manager.save(AIMessage, {
           conversationId: id,
@@ -136,9 +163,7 @@ export class ConversationService {
             JSON.stringify({
               source,
               context,
-              history: history
-                .reverse()
-                .map((m) => ({ role: m.role, text: m.text })),
+              history,
               question: text,
             })
           );
