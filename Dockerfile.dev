@@ -1,4 +1,5 @@
 FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
