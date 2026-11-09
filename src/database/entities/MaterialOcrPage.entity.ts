@@ -44,6 +44,16 @@ export const MaterialOcrPage = new EntitySchema<MaterialOcrPage>({
       updateDate: true,
     },
   },
+  checks: [
+    {
+      name: 'MaterialOcrPage_location_check',
+      expression: 'version > 0 AND page BETWEEN 1 AND 200',
+    },
+    {
+      name: 'MaterialOcrPage_status_check',
+      expression: "status IN ('running', 'ready', 'failed')",
+    },
+  ],
   foreignKeys: [
     {
       name: 'MaterialOcrPage_materialId_fkey',
