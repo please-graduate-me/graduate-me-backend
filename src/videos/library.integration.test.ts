@@ -5,6 +5,8 @@ import { Segment } from '../database/entities/Segment.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { Video } from '../database/entities/Video.entity.js';
 import { Progress } from '../database/entities/Progress.entity.js';
+import { Attempt } from '../database/entities/Attempt.entity.js';
+import { SegmentState } from '../database/entities/SegmentState.entity.js';
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -25,7 +27,8 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
   const settings = new SettingsService(db);
 
   const userId = randomUUID(),
-    otherId = randomUUID();
+    otherId = randomUUID(),
+    strangerId = randomUUID();
 
   const ids = Array.from({ length: 3 }, () => randomUUID());
   const segmentId = randomUUID();
@@ -34,7 +37,12 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
 
   beforeAll(async () => {
     await db.initialize();
-    await db.manager.insert(User, [{ id: userId }, { id: otherId }]);
+
+    await db.manager.insert(User, [
+      { id: userId },
+      { id: otherId },
+      { id: strangerId },
+    ]);
 
     for (const [index, id] of ids.entries()) {
       await db.manager.insert(Video, {
@@ -71,7 +79,7 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
   });
 
   afterAll(async () => {
-    await db.manager.delete(User, { id: In([userId, otherId]) });
+    await db.manager.delete(User, { id: In([userId, otherId, strangerId]) });
     await db.manager.delete(Video, { id: In(ids) });
     await db.destroy();
   });
@@ -217,5 +225,151 @@ describe.skipIf(!testUrl)('개인 목록과 공용 영상 DB 통합', () => {
     expect(lesson.difficultSegmentIds).toEqual([]);
     expect(lesson.progress).toMatchObject({ favorite: true, currentIndex: 0 });
     expect(lesson.video.liked).toBe(true);
+  });
+
+  it('비공개 재등록과 권한 철회를 차단하며 과거 답안은 지우지 않는다', async () => {
+    const progress = await db.manager.findOneByOrFail(Progress, {
+      userId: otherId,
+      videoId: ids[0],
+    });
+
+    const attemptId = randomUUID();
+
+    await db.manager.insert(Attempt, {
+      id: attemptId,
+      progressId: progress.id,
+      segmentId,
+      mode: 'full',
+      answer: 'old answer',
+      correct: false,
+      result: { sourceText: 'Hello world.', sourceVersion: 1 },
+    });
+
+    await db.manager.update(
+      Video,
+      { id: ids[0] },
+      { ownerId: userId, visibility: 'private' }
+    );
+
+    try {
+      await expect(
+        videos.registerVideo(strangerId, `https://youtu.be/${youtubeId}`)
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(
+        await db.manager.count(Progress, {
+          where: { userId: strangerId, videoId: ids[0] },
+        })
+      ).toBe(0);
+
+      await db.manager.update(
+        Video,
+        { id: ids[0] },
+        { visibility: 'accounts', allowedUserIds: [strangerId] }
+      );
+
+      await videos.registerVideo(strangerId, `https://youtu.be/${youtubeId}`);
+
+      expect((await videos.getLesson(strangerId, ids[0])).video.id).toBe(
+        ids[0]
+      );
+
+      await db.manager.update(Video, { id: ids[0] }, { allowedUserIds: [] });
+      expect(await videos.list(strangerId)).toEqual([]);
+
+      await expect(
+        videos.registerVideo(strangerId, `https://youtu.be/${youtubeId}`)
+      ).rejects.toMatchObject({ status: 404 });
+
+      await expect(videos.getLesson(strangerId, ids[0])).rejects.toMatchObject({
+        status: 404,
+      });
+
+      await expect(
+        videos.applyAction(strangerId, ids[0], {
+          action: 'reveal',
+          mode: 'full',
+          segmentId,
+          sourceVersion: 1,
+        })
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect((await videos.getLesson(userId, ids[0])).video.id).toBe(ids[0]);
+
+      expect(
+        await db.manager.findOneBy(Attempt, { id: attemptId })
+      ).toMatchObject({
+        answer: 'old answer',
+        result: { sourceText: 'Hello world.', sourceVersion: 1 },
+      });
+    } finally {
+      await db.manager.update(
+        Video,
+        { id: ids[0] },
+        { visibility: 'public', allowedUserIds: [] }
+      );
+    }
+  });
+
+  it('200개 중 199개 정답은 99퍼센트이며 전체 정답에만 완료를 표시한다', async () => {
+    await db.manager.insert(
+      Segment,
+      Array.from({ length: 199 }, (_, index) => ({
+        id: randomUUID(),
+        videoId: ids[0],
+        index: index + 1,
+        start: index + 3,
+        end: index + 4,
+        text: 'A sentence.',
+        words: [],
+      }))
+    );
+
+    const segments = await db.manager.find(Segment, {
+      where: { videoId: ids[0] },
+      order: { index: 'ASC' },
+    });
+
+    const progress = await db.manager.findOneByOrFail(Progress, {
+      userId,
+      videoId: ids[0],
+    });
+
+    const state = (id: string) => ({
+      progressId: progress.id,
+      segmentId: id,
+      mode: 'full',
+      blankRatio: 0,
+      sourceVersion: 1,
+      draft: '',
+      status: 'correct',
+    });
+
+    await db.manager.insert(
+      SegmentState,
+      segments.slice(0, 199).map((segment) => state(segment.id))
+    );
+
+    expect(await videos.getLesson(userId, ids[0])).toMatchObject({
+      completedCount: 199,
+      progressPercent: 99,
+      isComplete: false,
+    });
+
+    expect(
+      (await videos.list(userId)).find((item) => item.videoId === ids[0])
+    ).toMatchObject({ progressPercent: 99, isComplete: false });
+
+    await db.manager.insert(SegmentState, state(segments[199].id));
+
+    expect(await videos.getLesson(userId, ids[0])).toMatchObject({
+      completedCount: 200,
+      progressPercent: 100,
+      isComplete: true,
+    });
+
+    expect(
+      (await videos.list(userId)).find((item) => item.videoId === ids[0])
+    ).toMatchObject({ progressPercent: 100, isComplete: true });
   });
 });

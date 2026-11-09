@@ -171,4 +171,56 @@ describe.skipIf(!testUrl)('TypeORM 학습 저장과 동시 요청', () => {
       })
     ).toEqual({ nextIndex: 1 });
   });
+
+  it('수정 중인 구절 제출은 원문 잠금을 기다린 뒤 버전 충돌로 거부한다', async () => {
+    const tx = db.createQueryRunner();
+
+    await tx.connect();
+    await tx.startTransaction();
+    let settled = false;
+
+    try {
+      await tx.manager.update(Segment, { id: segmentId }, { version: 2 });
+
+      const result = service
+        .applyAction(userId, videoId, {
+          action: 'submit',
+          mode: 'full',
+          segmentId,
+          sourceVersion: 1,
+          answer: sentence,
+          requestId: randomUUID(),
+        })
+        .then(
+          () => ({ status: 200 }),
+          (error: { status: number }) => error
+        )
+        .finally(() => {
+          settled = true;
+        });
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(settled).toBe(false);
+      await tx.commitTransaction();
+      expect(await result).toMatchObject({ status: 409 });
+
+      const progress = await db.manager.findOneByOrFail(Progress, {
+        userId,
+        videoId,
+      });
+
+      expect(
+        await db.manager.count(Attempt, { where: { progressId: progress.id } })
+      ).toBe(1);
+
+      expect(
+        await db.manager.count(SegmentState, {
+          where: { progressId: progress.id, sourceVersion: 2 },
+        })
+      ).toBe(0);
+    } finally {
+      if (tx.isTransactionActive) await tx.rollbackTransaction();
+      await tx.release();
+    }
+  });
 });

@@ -28,4 +28,27 @@ describe('학습 요청 검증', () => {
         .success
     ).toBe(false);
   });
+
+  it('구절 동작은 선택적 원문 버전을 보존하고 잘못된 버전은 거부한다', () => {
+    for (const action of ['draft', 'submit', 'reveal', 'skip', 'hint']) {
+      const input = {
+        action,
+        segmentId: 'segment',
+        mode: 'full',
+        answer: 'hello',
+        requestId: '00000000-0000-4000-8000-000000000001',
+        sourceVersion: 2,
+      };
+
+      expect(actionSchema.parse(input)).toMatchObject({ sourceVersion: 2 });
+
+      expect(
+        actionSchema.safeParse({ ...input, sourceVersion: 0 }).success
+      ).toBe(false);
+
+      expect(
+        actionSchema.safeParse({ ...input, sourceVersion: 1.5 }).success
+      ).toBe(false);
+    }
+  });
 });

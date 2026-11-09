@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
 import { Progress } from '../database/entities/Progress.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
+import { Video } from '../database/entities/Video.entity.js';
 import { Attempt } from '../database/entities/Attempt.entity.js';
 import { SegmentState } from '../database/entities/SegmentState.entity.js';
 import { SegmentDifficulty } from '../database/entities/SegmentDifficulty.entity.js';
@@ -24,10 +25,17 @@ function setup(ownsVideo = true) {
       .mockImplementation(async (entity) =>
         entity === Job
           ? { status: 'ready' }
-          : ownsVideo
-            ? { id: 'my-progress' }
-            : null
+          : entity === Video
+            ? { id: 'video', visibility: 'public', allowedUserIds: [] }
+            : ownsVideo
+              ? { id: 'my-progress' }
+              : null
       ),
+    findOneBy: vi.fn().mockResolvedValue({
+      id: 'video',
+      visibility: 'public',
+      allowedUserIds: [],
+    }),
     update: vi.fn().mockResolvedValue({ affected: 1 }),
     delete: vi.fn().mockResolvedValue({ affected: 1 }),
     count: vi.fn().mockResolvedValue(3),
@@ -57,11 +65,17 @@ describe('영상 분석 작업 등록', () => {
     const insert = vi.fn().mockResolvedValue({});
 
     Object.assign(tx, {
-      findOneBy: vi.fn().mockResolvedValue({ id: 'shared-video' }),
+      findOneBy: vi.fn().mockResolvedValue({
+        id: 'shared-video',
+        visibility: 'public',
+        allowedUserIds: [],
+      }),
       insert,
     });
 
-    tx.findOne.mockResolvedValueOnce(null);
+    tx.findOne.mockImplementation(async (entity) =>
+      entity === Video ? { id: 'shared-video' } : null
+    );
 
     await expect(
       service.registerVideo('me', 'https://youtu.be/VHZI9_we5GQ')
@@ -92,6 +106,7 @@ describe('영상별 학습 기록 초기화', () => {
 
     expect(tx.findOne).toHaveBeenCalledWith(Progress, {
       where: { userId: 'me', videoId: 'video' },
+      lock: { mode: 'pessimistic_write' },
     });
 
     for (const entity of [SegmentState, SegmentDifficulty])
@@ -107,7 +122,7 @@ describe('영상별 학습 기록 초기화', () => {
 
     expect(tx.delete).not.toHaveBeenCalledWith(Attempt, expect.anything());
 
-    expect(tx.query.mock.invocationCallOrder[1]).toBeLessThan(
+    expect(tx.findOne.mock.invocationCallOrder[0]).toBeLessThan(
       tx.delete.mock.invocationCallOrder[0]
     );
   });

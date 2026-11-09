@@ -14,6 +14,15 @@ import { gradeSchema, type Mode } from './contracts.js';
 import { type LearningAction } from './actions.js';
 import { HttpError } from '../common/http-error.js';
 import { parseYouTubeUrl } from './youtube.js';
+import { requireReadableVideo } from './access.js';
+
+function progressPercent(completed: number, count: number) {
+  if (!count) return 0;
+
+  return completed === count
+    ? 100
+    : Math.min(99, Math.round((completed / count) * 100));
+}
 
 @Injectable()
 /** 영상과 계정별 진도 변경을 트랜잭션 경계 안에서 처리한다. */
@@ -50,6 +59,9 @@ export class VideosService {
         'completedCount'
       )
       .where('p.userId = :userId AND p.archivedAt IS NULL', { userId })
+      .andWhere(
+        `(v."ownerId" = :userId OR v.visibility = 'public' OR (v.visibility = 'accounts' AND v."allowedUserIds" ? :userId))`
+      )
       .orderBy('p.updatedAt', 'DESC')
       .getRawMany<{
         videoId: string;
@@ -68,9 +80,7 @@ export class VideosService {
 
     return rows.map((row) => ({
       ...row,
-      progressPercent: row.count
-        ? Math.round((row.completedCount / row.count) * 100)
-        : 0,
+      progressPercent: progressPercent(row.completedCount, row.count),
       isComplete: row.count > 0 && row.completedCount === row.count,
     }));
   }
@@ -103,10 +113,9 @@ export class VideosService {
         `${youtubeId}:${language}:${analysisVersion}`,
       ]);
 
-      let video = await tx.findOneBy(Video, {
-        youtubeId,
-        language,
-        analysisVersion,
+      let video = await tx.findOne(Video, {
+        where: { youtubeId, language, analysisVersion },
+        lock: { mode: 'pessimistic_read' },
       });
 
       if (!video) {
@@ -144,6 +153,8 @@ export class VideosService {
         });
       }
 
+      await requireReadableVideo({ manager: tx }, userId, video.id);
+
       const job = await tx.findOne(Job, { where: { videoId: video.id } });
 
       if (!job) await tx.insert(Job, { videoId: video.id });
@@ -175,6 +186,8 @@ export class VideosService {
     throw new HttpError(410, '실패한 자료의 분석 재시도는 제공하지 않습니다.');
   }
   async getLesson(userId: string, videoId: string) {
+    await requireReadableVideo(this.db, userId, videoId);
+
     const progress = await this.db.manager.findOne(Progress, {
       where: { userId, videoId },
       relations: { states: true, user: true, video: { job: true } },
@@ -244,9 +257,7 @@ export class VideosService {
         favorite: progress.favorite,
       },
       completedCount,
-      progressPercent: segments.length
-        ? Math.round((completedCount / segments.length) * 100)
-        : 0,
+      progressPercent: progressPercent(completedCount, segments.length),
       isComplete: segments.length > 0 && completedCount === segments.length,
       preparation: {
         transcription:
@@ -372,22 +383,47 @@ export class VideosService {
         videoId,
       ]);
 
+      const video = await requireReadableVideo(
+        { manager: tx },
+        userId,
+        videoId
+      );
+
+      // 운영자와 같은 구절→진도 순서로 잠가 원문 교체 중 제출과 교착을 막는다.
+      const segment =
+        'segmentId' in input
+          ? await tx.findOne(Segment, {
+              where: { id: input.segmentId, videoId },
+              lock: { mode: 'pessimistic_read' },
+            })
+          : null;
+
+      if ('segmentId' in input && !segment)
+        throw new HttpError(
+          404,
+          '이 구절이 없거나 학습 목록에서 제외되었습니다. 새로고침해 주세요.'
+        );
+      if (
+        'sourceVersion' in input &&
+        input.sourceVersion !== undefined &&
+        segment?.version !== input.sourceVersion
+      )
+        throw new HttpError(
+          409,
+          '원문이 변경되었습니다. 최신 구절을 확인한 뒤 다시 학습해 주세요.'
+        );
+
       const progress = await tx.findOne(Progress, {
         where: { userId, videoId },
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!progress) throw new HttpError(404, '학습 영상을 찾을 수 없습니다.');
-
-      // 동일 계정의 저장과 제출이 오래된 진도를 덮어쓰지 않게 한다.
-      await tx.query('SELECT id FROM "Progress" WHERE id = $1 FOR UPDATE', [
-        progress.id,
-      ]);
 
       const job = await tx.findOne(Job, { where: { videoId } });
 
       if (job?.status !== 'ready')
         throw new HttpError(409, '영상 처리가 아직 완료되지 않았습니다.');
-      const video = await tx.findOne(Video, { where: { id: videoId } });
       const ratio = progress.blankRatio || 20;
       const language = video?.language ?? 'en';
 
@@ -468,10 +504,6 @@ export class VideosService {
 
         return { ok: true };
       }
-
-      const segment = await tx.findOne(Segment, {
-        where: { id: input.segmentId, videoId },
-      });
 
       if (!segment)
         throw new HttpError(

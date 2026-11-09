@@ -18,11 +18,13 @@ export const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('hint'),
     segmentId: z.string(),
+    sourceVersion: z.number().int().positive().optional(),
     mode: modeSchema,
   }),
   z.object({
     action: z.literal('difficulty'),
     segmentId: z.string(),
+    sourceVersion: z.number().int().positive().optional(),
     marked: z.boolean(),
   }),
   z.object({
@@ -33,12 +35,14 @@ export const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('draft'),
     segmentId: z.string(),
+    sourceVersion: z.number().int().positive().optional(),
     mode: modeSchema,
     answer: answerSchema,
   }),
   z.object({
     action: z.literal('submit'),
     segmentId: z.string(),
+    sourceVersion: z.number().int().positive().optional(),
     mode: modeSchema,
     answer: answerSchema,
     requestId: z.uuid(),
@@ -46,6 +50,7 @@ export const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.enum(['reveal', 'skip']),
     segmentId: z.string(),
+    sourceVersion: z.number().int().positive().optional(),
     mode: modeSchema,
   }),
 ]);
