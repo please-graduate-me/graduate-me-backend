@@ -19,6 +19,8 @@ export const explanationPayloadSchema = z.object({
 export const practicePayloadSchema = z
   .object({
     type: z.enum(['choice', 'short_answer', 'free_response']),
+    practiceStyle: z.enum(['application', 'flex']).optional(),
+    skill: z.enum(['reading', 'listening']).optional(),
     question: z.string().trim().min(1).max(5000),
     choices: z.array(z.string().trim().min(1).max(2000)).max(5),
     answer: z.string().trim().min(1).max(5000),

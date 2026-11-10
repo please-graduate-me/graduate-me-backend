@@ -398,6 +398,24 @@ describe.skipIf(!testUrl)(
         skill: 'reading',
       });
 
+      const callsBeforeListening = generated.mock.calls.length;
+
+      await expect(
+        practice.generate(
+          owner,
+          practiceGenerateSchema.parse({
+            source: selected,
+            requestId: randomUUID(),
+            language: 'en',
+            count: 1,
+            style: 'flex',
+            skill: 'listening',
+          })
+        )
+      ).rejects.toMatchObject({ status: 400 });
+
+      expect(generated.mock.calls).toHaveLength(callsBeforeListening);
+
       expect(generated.mock.calls.at(-1)?.[0].messages[0].content).toContain(
         'FLEX형'
       );

@@ -107,6 +107,17 @@ export class PracticeService {
       ? [source]
       : expressions.map((e) => e.source);
 
+    // 듣기 문항은 실제 재생할 영상 근거가 있을 때만 제공하고 PDF를 음성 자료로 가장하지 않는다.
+    if (
+      input.style === 'flex' &&
+      input.skill === 'listening' &&
+      evidenceSources.some((evidence) => evidence.kind !== 'video')
+    )
+      throw new HttpError(
+        400,
+        'FLEX형 듣기 연습은 영상에서 저장한 원문이나 표현을 선택해 주세요.'
+      );
+
     const matchingSource = (quote: string) =>
       evidenceSources.find((s) =>
         normalizedExcerpt(s.quote).includes(normalizedExcerpt(quote))
