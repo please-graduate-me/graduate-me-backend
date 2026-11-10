@@ -21,6 +21,14 @@ export const historyQuerySchema = workspaceQuerySchema.extend({
 /** 이력 검색은 앱의 표시 조건과 서버 조회 조건을 함께 유지한다. */
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
 
+/** 게시물 신고 조치는 원문을 삭제하지 않고 사유와 기대 상태를 함께 기록한다. */
+export const moderationInputSchema = z.object({
+  status: z.enum(['resolved', 'dismissed']),
+  resolution: z.string().trim().min(1).max(5000),
+  hidden: z.boolean(),
+  expectedUpdatedAt: z.iso.datetime(),
+});
+
 /** 초안과 내부 메모는 답변 게시 요청과 별도로 검증한다. */
 export const draftInputSchema = z.object({
   draft: z.string().max(10_000).optional(),

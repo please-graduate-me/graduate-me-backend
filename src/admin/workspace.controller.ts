@@ -26,11 +26,12 @@ import {
   reviewInputSchema,
   questionListQuerySchema,
   historyQuerySchema,
+  moderationInputSchema,
 } from './workspace-contracts.js';
 
+/** 도우미 작업과 운영자 전용 관리를 서버 권한 경계로 분리한다. */
 @Controller('admin/workspace')
 @UseGuards(AuthGuard)
-/** 도우미 작업과 운영자 전용 관리를 서버 권한 경계로 분리한다. */
 export class WorkspaceController {
   constructor(
     @Inject(WorkspaceAccessService)
@@ -137,8 +138,8 @@ export class WorkspaceController {
   }
   @Get('materials')
   @UseGuards(AdminGuard)
-  materials() {
-    return this.operations.materials();
+  materials(@Query() query: unknown) {
+    return this.operations.materials(historyQuerySchema.parse(query));
   }
   @Get('helpers')
   @UseGuards(AdminGuard)
@@ -155,5 +156,24 @@ export class WorkspaceController {
   @UseGuards(AdminGuard)
   usage() {
     return this.operations.usage();
+  }
+  @Get('community-reports')
+  @UseGuards(AdminGuard)
+  communityReports(@Query() query: unknown) {
+    return this.operations.communityReports(historyQuerySchema.parse(query));
+  }
+  @Post('community-reports/:id/resolve')
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
+  moderate(
+    @Req() r: UserRequest,
+    @Param('id') id: string,
+    @Body() body: unknown
+  ) {
+    return this.operations.moderate(
+      r.userId,
+      id,
+      moderationInputSchema.parse(body)
+    );
   }
 }

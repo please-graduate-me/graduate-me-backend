@@ -5,6 +5,12 @@ import { databaseOptions } from '../database/options.js';
 import { User } from '../database/entities/User.entity.js';
 import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { LearningQuestion } from '../database/entities/LearningQuestion.entity.js';
+import { Material } from '../database/entities/Material.entity.js';
+import { MaterialAccess } from '../database/entities/MaterialAccess.entity.js';
+import { Video } from '../database/entities/Video.entity.js';
+import { CommunityService } from '../community/community.service.js';
+import { ReviewEvent } from '../database/entities/ReviewEvent.entity.js';
+import { WorkspaceOperationsService } from './workspace-operations.service.js';
 import { ReviewRequest } from '../database/entities/ReviewRequest.entity.js';
 import { SourceService } from '../learning/source.service.js';
 import { QuestionsService } from '../learning/questions.service.js';
@@ -29,10 +35,12 @@ describe.skipIf(!testUrl)('관리 질문 목록의 전체 범위 필터와 권�
     other = randomUUID();
 
   const materialId = randomUUID();
+  const videoId = randomUUID();
   const ids = Array.from({ length: 27 }, () => randomUUID());
   const access = new WorkspaceAccessService(db, new AdminService(db));
   const questions = new QuestionsService(db, new SourceService(db), access);
   const workspace = new WorkspaceQuestionsService(db, access, questions);
+  const operations = new WorkspaceOperationsService(db, questions);
 
   beforeAll(async () => {
     await db.initialize();
@@ -90,6 +98,7 @@ describe.skipIf(!testUrl)('관리 질문 목록의 전체 범위 필터와 권�
 
   afterAll(async () => {
     if (!db.isInitialized) return;
+    await db.manager.delete(Video, { id: videoId });
     await db.manager.delete(User, { id: In([owner, helper, other]) });
     await db.destroy();
   });
@@ -168,5 +177,146 @@ describe.skipIf(!testUrl)('관리 질문 목록의 전체 범위 필터와 권�
     await expect(workspace.review(other, reviewIds[101])).rejects.toMatchObject(
       { status: 403 }
     );
+  });
+
+  it('자료 종류·접근 범위·실제 소유자와 페이지 분할을 원본 없이 반환한다', async () => {
+    const title = `검수자료-${materialId}`;
+
+    await db.manager.insert(Material, {
+      id: materialId,
+      ownerId: owner,
+      title,
+      language: 'en',
+      filename: '원본.pdf',
+      content: Buffer.from('원본비공개'),
+      pages: ['원문 비공개'],
+      memo: '개인 메모',
+    });
+
+    await db.manager.insert(MaterialAccess, {
+      id: materialId,
+      kind: 'pdf',
+      visibility: 'public',
+      allowedUserIds: [],
+      version: 1,
+    });
+
+    await db.manager.insert(Video, {
+      id: videoId,
+      ownerId: owner,
+      title,
+      youtubeId: videoId,
+      visibility: 'private',
+    });
+
+    const first = await operations.materials(
+      historyQuerySchema.parse({ q: title, limit: 1 })
+    );
+
+    expect(first.total).toBe(2);
+    expect(first.hasMore).toBe(true);
+
+    const second = await operations.materials(
+      historyQuerySchema.parse({ q: title, limit: 1, page: 2 })
+    );
+
+    expect(second.items).toHaveLength(1);
+    expect(second.items[0].id).not.toBe(first.items[0].id);
+
+    const video = await operations.materials(
+      historyQuerySchema.parse({ q: title, status: 'video' })
+    );
+
+    expect(video.items[0]).toMatchObject({
+      id: videoId,
+      owner: { id: owner },
+      visibility: 'private',
+    });
+
+    const pdf = await operations.materials(
+      historyQuerySchema.parse({ q: title, status: 'pdf' })
+    );
+
+    expect(pdf.items[0]).toMatchObject({
+      id: materialId,
+      pageCount: 1,
+      visibility: 'public',
+    });
+
+    for (const row of [...first.items, ...second.items]) {
+      expect(row).not.toHaveProperty('content');
+      expect(row).not.toHaveProperty('pages');
+      expect(row).not.toHaveProperty('memo');
+    }
+  });
+
+  it('게시물 신고를 숨김·복원하며 원본과 운영 이력을 남기고 낡은 조치를 거부한다', async () => {
+    const title = `게시물검수-${owner}`;
+
+    const posts: { id: string }[] = await db.query(
+      `INSERT INTO "CommunityPost"("ownerId",title,body,language,visibility) VALUES($1,$2,'게시한 내용','en','public') RETURNING id`,
+      [owner, title]
+    );
+
+    const postId = posts[0].id;
+
+    const reports: { id: string }[] = await db.query(
+      `INSERT INTO "CommunityReport"("postId","reporterId",reason) VALUES($1,$2,'신고 근거') RETURNING id`,
+      [postId, helper]
+    );
+
+    const reportId = reports[0].id;
+    const community = new CommunityService(db, new SourceService(db));
+
+    const original = await operations.communityReports(
+      historyQuerySchema.parse({ q: title })
+    );
+
+    expect(original.total).toBe(1);
+    expect(original.items[0].post.body).toBe('게시한 내용');
+    const expectedUpdatedAt = original.items[0].updatedAt.toISOString();
+
+    await operations.moderate(owner, reportId, {
+      status: 'resolved',
+      resolution: '게시 내용 숨김',
+      hidden: true,
+      expectedUpdatedAt,
+    });
+
+    await expect(community.get(helper, postId)).rejects.toMatchObject({
+      status: 404,
+    });
+
+    expect((await community.get(owner, postId)).body).toBe('게시한 내용');
+
+    await expect(
+      operations.moderate(owner, reportId, {
+        status: 'dismissed',
+        resolution: '낡은 상태에서 변경',
+        hidden: false,
+        expectedUpdatedAt,
+      })
+    ).rejects.toMatchObject({ status: 409 });
+
+    const refreshed = await operations.communityReports(
+      historyQuerySchema.parse({ q: title })
+    );
+
+    await operations.moderate(owner, reportId, {
+      status: 'dismissed',
+      resolution: '근거 재확인 후 복원',
+      hidden: false,
+      expectedUpdatedAt: refreshed.items[0].updatedAt.toISOString(),
+    });
+
+    expect((await community.get(helper, postId)).body).toBe('게시한 내용');
+
+    const events = await db.manager.findBy(ReviewEvent, {
+      actorId: owner,
+      action: 'community_moderated',
+    });
+
+    expect(events).toHaveLength(2);
+    expect(events.every((event) => event.visibility === 'internal')).toBe(true);
   });
 });

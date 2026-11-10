@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, In, Not } from 'typeorm';
 import type { z } from 'zod';
+import { containsPattern } from '../database/query.js';
 import { Material } from '../database/entities/Material.entity.js';
 import { Video } from '../database/entities/Video.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
@@ -10,10 +11,14 @@ import { ReviewRequest } from '../database/entities/ReviewRequest.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { QuestionsService } from '../learning/questions.service.js';
 import { HttpError } from '../common/http-error.js';
-import type { helperInputSchema } from './workspace-contracts.js';
+import type {
+  helperInputSchema,
+  HistoryQuery,
+  moderationInputSchema,
+} from './workspace-contracts.js';
 
-@Injectable()
 /** 운영 집계는 저장된 기록만 사용하고 미측정 비용을 추정하지 않는다. */
+@Injectable()
 export class WorkspaceOperationsService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -31,61 +36,51 @@ export class WorkspaceOperationsService {
 
     return { processing, waiting, reviews, failed };
   }
-  async materials() {
-    const [materials, videos, jobs] = await Promise.all([
-      this.db.manager.find(Material, {
-        select: {
-          id: true,
-          title: true,
-          language: true,
-          ownerId: true,
-          pages: true,
-          createdAt: true,
-        },
-        order: { createdAt: 'DESC' },
-        take: 100,
-      }),
-      this.db.manager.find(Video, { order: { createdAt: 'DESC' }, take: 100 }),
-      this.db.manager.find(Job),
+  async materials(query?: HistoryQuery) {
+    const {
+      page = 1,
+      limit = 100,
+      q = '',
+      status = 'all',
+      period = 'all',
+    } = query ?? {};
+
+    // 원본·개인 메모를 읽지 않고 목록에 필요한 메타데이터만 합친다.
+    const union = `SELECT m.id,m.title,'pdf' AS kind,m.language,
+      jsonb_build_object('id',m."ownerId",'name',u.name) AS owner,
+      jsonb_array_length(m.pages) AS "pageCount",NULL::double precision AS duration,
+      'ready' AS status,m."createdAt",COALESCE(a.visibility,'private') AS visibility
+      FROM "Material" m LEFT JOIN "User" u ON u.id=m."ownerId"
+      LEFT JOIN "MaterialAccess" a ON a.id=m.id AND a.kind='pdf'
+      UNION ALL SELECT v.id,v.title,'video',v.language,
+      CASE WHEN v."ownerId" IS NULL THEN NULL ELSE jsonb_build_object('id',v."ownerId",'name',u.name) END,
+      NULL::integer,v.duration,COALESCE(j.status,'queued'),v."createdAt",v.visibility
+      FROM "Video" v LEFT JOIN "User" u ON u.id=v."ownerId" LEFT JOIN "Job" j ON j."videoId"=v.id`;
+
+    const where = `WHERE ($1='all' OR kind=$1) AND (title ILIKE $2 OR owner->>'name' ILIKE $2) AND ($3::timestamp IS NULL OR "createdAt">=$3::timestamp)`;
+
+    const parameters = [
+      status,
+      containsPattern(q),
+      period === 'all'
+        ? null
+        : new Date(Date.now() - Number(period) * 86_400_000),
+    ];
+
+    const [items, counts] = await Promise.all([
+      this.db.query(
+        `SELECT * FROM (${union}) materials ${where} ORDER BY "createdAt" DESC,id ASC OFFSET $4 LIMIT $5`,
+        [...parameters, (page - 1) * limit, limit]
+      ),
+      this.db.query(
+        `SELECT count(*)::int AS total FROM (${union}) materials ${where}`,
+        parameters
+      ),
     ]);
 
-    const owners = new Map(
-      (materials.length
-        ? await this.db.manager.findBy(User, {
-            id: In(materials.map((m) => m.ownerId)),
-          })
-        : []
-      ).map((u) => [u.id, u])
-    );
+    const total = Number(counts[0].total);
 
-    const statuses = new Map(jobs.map((j) => [j.videoId, j.status]));
-
-    return {
-      items: [
-        ...materials.map((m) => ({
-          id: m.id,
-          title: m.title,
-          kind: 'pdf' as const,
-          language: m.language,
-          owner: { id: m.ownerId, name: owners.get(m.ownerId)?.name ?? null },
-          pageCount: m.pages.length,
-          duration: null,
-          status: 'ready',
-          createdAt: m.createdAt,
-        })),
-        ...videos.map((v) => ({
-          id: v.id,
-          title: v.title,
-          kind: 'video' as const,
-          language: v.language,
-          owner: null,
-          pageCount: null,
-          duration: v.duration,
-          status: statuses.get(v.id) ?? 'queued',
-          createdAt: v.createdAt,
-        })),
-      ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-    };
+    return { items, page, limit, total, hasMore: page * limit < total };
   }
   private async helperDetail(row: HelperProfile) {
     const user = await this.db.manager.findOneBy(User, { id: row.userId });
@@ -112,6 +107,7 @@ export class WorkspaceOperationsService {
     };
   }
   async saveHelper(userId: string, input: z.infer<typeof helperInputSchema>) {
+    // 아직 로그인하지 않은 이메일로 실체 없는 도우미 권한이 생기는 것을 막는다.
     const user = await this.db
       .getRepository(User)
       .createQueryBuilder('u')
@@ -128,6 +124,7 @@ export class WorkspaceOperationsService {
     if (input.canEdit && !input.canReview)
       throw new HttpError(400, '직접 수정에는 검토 권한도 필요합니다.');
 
+    // 자료 배정은 원본 공개 동의가 아니라 질문을 담당할 범위의 지정이다.
     if (input.materialIds.length) {
       const [materials, videos] = await Promise.all([
         this.db.manager.findBy(Material, { id: In(input.materialIds) }),
@@ -198,5 +195,76 @@ export class WorkspaceOperationsService {
         cost: null,
       })),
     };
+  }
+  async communityReports(query: HistoryQuery) {
+    const { page, limit, status, period, q } = query;
+    // 신고한 게시 내용만 조회하며 첨부 PDF 원본이나 개인 대화는 열지 않는다.
+    const join = `FROM "CommunityReport" r JOIN "CommunityPost" p ON p.id=r."postId" LEFT JOIN "User" u ON u.id=r."reporterId"`;
+    const where = `WHERE ($1='all' OR r.status=$1) AND (r.reason ILIKE $2 OR p.title ILIKE $2) AND ($3::timestamp IS NULL OR r."createdAt">=$3::timestamp)`;
+
+    const params = [
+      status,
+      containsPattern(q),
+      period === 'all'
+        ? null
+        : new Date(Date.now() - Number(period) * 86_400_000),
+    ];
+
+    const [items, counts] = await Promise.all([
+      this.db.query(
+        `SELECT r.id,r.reason,r.status,r.resolution,r."createdAt",r."updatedAt",
+        jsonb_build_object('id',p.id,'title',p.title,'body',p.body,'language',p.language,'visibility',p.visibility,'hiddenAt',p."hiddenAt",'source',p.source) AS post,
+        jsonb_build_object('id',u.id,'name',u.name) AS reporter ${join} ${where} ORDER BY r."createdAt" DESC,r.id OFFSET $4 LIMIT $5`,
+        [...params, (page - 1) * limit, limit]
+      ),
+      this.db.query(`SELECT count(*)::int AS total ${join} ${where}`, params),
+    ]);
+
+    const total = Number(counts[0].total);
+
+    return { items, page, limit, total, hasMore: page * limit < total };
+  }
+  async moderate(
+    actorId: string,
+    id: string,
+    input: z.infer<typeof moderationInputSchema>
+  ) {
+    await this.db.transaction(async (tx) => {
+      const reports: { postId: string; status: string; updatedAt: Date }[] =
+        await tx.query(
+          'SELECT "postId",status,"updatedAt" FROM "CommunityReport" WHERE id=$1 FOR UPDATE',
+          [id]
+        );
+
+      const report = reports[0];
+
+      if (!report) throw new HttpError(404, '게시물 신고를 찾을 수 없습니다.');
+      if (report.updatedAt.getTime() !== Date.parse(input.expectedUpdatedAt))
+        throw new HttpError(
+          409,
+          '신고가 변경되었습니다. 최신 상태를 다시 확인해 주세요.'
+        );
+
+      // 숨김 상태를 되돌릴 때도 원래 신고와 조치 이력을 보존한다.
+      await tx.query(
+        'UPDATE "CommunityPost" SET "hiddenAt"=CASE WHEN $1::boolean THEN COALESCE("hiddenAt",now()) ELSE NULL END WHERE id=$2',
+        [input.hidden, report.postId]
+      );
+
+      await tx.query(
+        'UPDATE "CommunityReport" SET status=$1,resolution=$2,"updatedAt"=clock_timestamp() WHERE id=$3',
+        [input.status, input.resolution, id]
+      );
+
+      await this.questions.event(
+        tx,
+        actorId,
+        null,
+        'community_moderated',
+        `게시물 ${report.postId} 신고 ${id}: ${report.status} → ${input.status}, ${input.hidden ? '숨김' : '노출'}: ${input.resolution}`
+      );
+    });
+
+    return { ok: true };
   }
 }
