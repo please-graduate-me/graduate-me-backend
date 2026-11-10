@@ -73,7 +73,8 @@ export class OperationService {
         if (old.status === 'failed')
           throw new HttpError(
             502,
-            old.error || '이 요청은 실패로 종료되었습니다.'
+            old.error || '이 요청은 실패로 종료되었습니다.',
+            'AI_OPERATION_FAILED'
           );
         throw new HttpError(
           409,
