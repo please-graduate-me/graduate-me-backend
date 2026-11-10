@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, In, type EntityManager } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import type { z } from 'zod';
 import { LearningQuestion } from '../database/entities/LearningQuestion.entity.js';
 import { QuestionMessage } from '../database/entities/QuestionMessage.entity.js';
@@ -21,6 +21,8 @@ import type {
   draftInputSchema,
   reviewInputSchema,
   resolutionInputSchema,
+  QuestionListQuery,
+  HistoryQuery,
 } from './workspace-contracts.js';
 
 /** 검토 요청에서도 계정 식별자와 내부 저장 필드를 명시적으로 투영한다. */
@@ -114,7 +116,10 @@ export class WorkspaceQuestionsService {
       reviews: reviews.map(reviewDetail),
     };
   }
-  async list(userId: string, query: WorkspaceQuery) {
+  async list(
+    userId: string,
+    query: WorkspaceQuery & Partial<QuestionListQuery>
+  ) {
     const builder = await this.scoped(userId);
 
     if (query.q)
@@ -124,6 +129,31 @@ export class WorkspaceQuestionsService {
           term: containsPattern(query.q),
         }
       );
+
+    if (query.period && query.period !== 'all')
+      builder.andWhere('q.createdAt >= :since', {
+        since: new Date(Date.now() - Number(query.period) * 86_400_000),
+      });
+
+    const reviewCondition = `EXISTS (SELECT 1 FROM "ReviewRequest" review WHERE review."questionId" = q.id AND review.status = 'open')`;
+
+    // 상태 탭을 바꾸어도 검색 범위의 집계가 현재 페이지 수로 바뀌지 않게 한다.
+    const [all, waiting, answered, review] = await Promise.all([
+      builder.clone().getCount(),
+      builder
+        .clone()
+        .andWhere('q.status = :status', { status: 'waiting' })
+        .getCount(),
+      builder
+        .clone()
+        .andWhere('q.status = :status', { status: 'answered' })
+        .getCount(),
+      builder.clone().andWhere(reviewCondition).getCount(),
+    ]);
+
+    if (query.status === 'review') builder.andWhere(reviewCondition);
+    else if (query.status === 'waiting' || query.status === 'answered')
+      builder.andWhere('q.status = :status', { status: query.status });
 
     const [rows, total] = await builder
       .orderBy('q.updatedAt', 'DESC')
@@ -138,6 +168,7 @@ export class WorkspaceQuestionsService {
       limit: query.limit,
       total,
       hasMore: query.page * query.limit < total,
+      summary: { all, waiting, answered, review },
     };
   }
   async saveDraft(
@@ -299,20 +330,58 @@ export class WorkspaceQuestionsService {
 
     return this.detail(userId, id);
   }
-  async reviews(userId: string) {
-    const ids = (
-      await (await this.scoped(userId)).select('q.id').getMany()
-    ).map((q) => q.id);
+  async review(userId: string, id: string) {
+    const row = await this.db.manager.findOneBy(ReviewRequest, { id });
 
-    if (!ids.length) return { items: [] };
+    if (!row) throw new HttpError(404, '검토 요청을 찾을 수 없습니다.');
+    await this.readable(userId, row.questionId);
 
-    const rows = await this.db.manager.find(ReviewRequest, {
-      where: { questionId: In(ids) },
-      order: { createdAt: 'DESC', id: 'ASC' },
-      take: 100,
-    });
+    return reviewDetail(row);
+  }
+  async reviews(userId: string, query?: HistoryQuery) {
+    const scope = (await this.scoped(userId)).select('q.id');
 
-    return { items: rows.map(reviewDetail) };
+    const builder = this.db
+      .getRepository(ReviewRequest)
+      .createQueryBuilder('r')
+      .where(`r."questionId" IN (${scope.getQuery()})`)
+      .setParameters(scope.getParameters());
+
+    const {
+      page = 1,
+      limit = 100,
+      status = 'all',
+      period = 'all',
+      q = '',
+      kind = 'all',
+    } = query ?? {};
+
+    if (status !== 'all') builder.andWhere('r.status = :status', { status });
+    if (kind !== 'all') builder.andWhere('r.kind = :kind', { kind });
+    if (period !== 'all')
+      builder.andWhere('r.createdAt >= :since', {
+        since: new Date(Date.now() - Number(period) * 86_400_000),
+      });
+    if (q)
+      builder.andWhere(
+        `(r.reason ILIKE :term OR r.version ILIKE :term OR r.source->>'title' ILIKE :term OR r.id ILIKE :term)`,
+        { term: containsPattern(q) }
+      );
+
+    const [rows, total] = await builder
+      .orderBy('r.createdAt', 'DESC')
+      .addOrderBy('r.id', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items: rows.map(reviewDetail),
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
+    };
   }
   async resolve(
     userId: string,
@@ -343,20 +412,44 @@ export class WorkspaceQuestionsService {
 
     return reviewDetail(row);
   }
-  async events(userId: string) {
+  async events(userId: string, query?: HistoryQuery) {
     const access = await this.access.require(userId);
+    const builder = this.db.getRepository(ReviewEvent).createQueryBuilder('e');
 
-    const ids = (
-      await (await this.scoped(userId)).select('q.id').getMany()
-    ).map((q) => q.id);
+    if (access.role !== 'admin') {
+      const scope = (await this.scoped(userId)).select('q.id');
 
-    if (access.role !== 'admin' && !ids.length) return { items: [] };
+      builder
+        .where(`e."questionId" IN (${scope.getQuery()})`)
+        .setParameters(scope.getParameters());
+    }
 
-    const rows = await this.db.manager.find(ReviewEvent, {
-      ...(access.role === 'admin' ? {} : { where: { questionId: In(ids) } }),
-      order: { createdAt: 'DESC', id: 'ASC' },
-      take: 100,
-    });
+    const {
+      page = 1,
+      limit = 100,
+      status = 'all',
+      period = 'all',
+      q = '',
+    } = query ?? {};
+
+    if (status !== 'all')
+      builder.andWhere('e.visibility = :status', { status });
+    if (period !== 'all')
+      builder.andWhere('e.createdAt >= :since', {
+        since: new Date(Date.now() - Number(period) * 86_400_000),
+      });
+    if (q)
+      builder.andWhere(
+        `(e.detail ILIKE :term OR e.action ILIKE :term OR e."actorName" ILIKE :term OR e."questionId" ILIKE :term)`,
+        { term: containsPattern(q) }
+      );
+
+    const [rows, total] = await builder
+      .orderBy('e.createdAt', 'DESC')
+      .addOrderBy('e.id', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
 
     return {
       items: rows.map((row) => ({
@@ -368,6 +461,10 @@ export class WorkspaceQuestionsService {
         actor: { id: row.actorId, name: row.actorName },
         createdAt: row.createdAt,
       })),
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
     };
   }
 }

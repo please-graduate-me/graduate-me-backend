@@ -17,16 +17,15 @@ import { WorkspaceGuard } from './workspace.guard.js';
 import { WorkspaceAccessService } from './workspace-access.service.js';
 import { WorkspaceQuestionsService } from './workspace-questions.service.js';
 import { WorkspaceOperationsService } from './workspace-operations.service.js';
-import {
-  messageInputSchema,
-  workspaceQuerySchema,
-} from '../learning/contracts.js';
+import { messageInputSchema } from '../learning/contracts.js';
 import {
   assignInputSchema,
   draftInputSchema,
   helperInputSchema,
   resolutionInputSchema,
   reviewInputSchema,
+  questionListQuerySchema,
+  historyQuerySchema,
 } from './workspace-contracts.js';
 
 @Controller('admin/workspace')
@@ -48,7 +47,7 @@ export class WorkspaceController {
   @Get('questions')
   @UseGuards(WorkspaceGuard)
   list(@Req() r: UserRequest, @Query() query: unknown) {
-    return this.questions.list(r.userId, workspaceQuerySchema.parse(query));
+    return this.questions.list(r.userId, questionListQuerySchema.parse(query));
   }
   @Get('questions/:id')
   @UseGuards(WorkspaceGuard)
@@ -104,8 +103,13 @@ export class WorkspaceController {
   }
   @Get('reviews')
   @UseGuards(WorkspaceGuard)
-  reviews(@Req() r: UserRequest) {
-    return this.questions.reviews(r.userId);
+  reviews(@Req() r: UserRequest, @Query() query: unknown) {
+    return this.questions.reviews(r.userId, historyQuerySchema.parse(query));
+  }
+  @Get('reviews/:id')
+  @UseGuards(WorkspaceGuard)
+  review(@Req() r: UserRequest, @Param('id') id: string) {
+    return this.questions.review(r.userId, id);
   }
   @Post('reviews/:id/resolve')
   @HttpCode(200)
@@ -123,8 +127,8 @@ export class WorkspaceController {
   }
   @Get('events')
   @UseGuards(WorkspaceGuard)
-  events(@Req() r: UserRequest) {
-    return this.questions.events(r.userId);
+  events(@Req() r: UserRequest, @Query() query: unknown) {
+    return this.questions.events(r.userId, historyQuerySchema.parse(query));
   }
   @Get('overview')
   @UseGuards(AdminGuard)
