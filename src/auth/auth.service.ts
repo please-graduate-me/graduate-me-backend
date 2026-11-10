@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { getSession, type ExpressAuthConfig } from '@auth/express';
+import { ExpressAuth, type ExpressAuthConfig } from '@auth/express';
+import { Auth } from '@auth/core';
 import Google from '@auth/express/providers/google';
 import { typeormAdapter } from './typeorm-adapter.js';
-import type { Request } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { DataSource } from 'typeorm';
 import { authRedirect } from './origins.js';
+import { authRequestOrigin } from './request-origin.js';
 
 /** 세션과 OAuth 설정이 여러 API에서 다르게 적용되지 않게 한다. */
 @Injectable()
@@ -21,6 +23,7 @@ export class AuthService {
         Google({
           clientId: process.env.AUTH_GOOGLE_ID,
           clientSecret: process.env.AUTH_GOOGLE_SECRET,
+          checks: ['pkce', 'state'],
         }),
       ],
       session: { strategy: 'database' },
@@ -50,7 +53,43 @@ export class AuthService {
       process.env.AUTH_SECRET
     );
   }
+  forRequest(request: Request): ExpressAuthConfig {
+    const origin = authRequestOrigin(request);
+
+    // ExpressAuth가 요청별 기본값을 변경하므로 공유 설정을 복제하고 쿠키는 각 호스트에만 둔다.
+    return {
+      ...this.config,
+      providers: this.config.providers.map((provider) =>
+        typeof provider === 'function' ? provider : { ...provider }
+      ),
+      useSecureCookies: origin.protocol === 'https:',
+    };
+  }
+  handle(request: Request, response: Response, next: NextFunction) {
+    return ExpressAuth(this.forRequest(request))(request, response, next);
+  }
   async session(request: Request) {
-    return this.configured ? getSession(request, this.config) : null;
+    if (!this.configured) return null;
+    const origin = authRequestOrigin(request);
+
+    // express getSession은 전역 AUTH_URL을 우선하므로 직접 현재 앱의 세션 URL을 구성한다.
+    const response = await Auth(
+      new Request(new URL('/api/auth/session', origin), {
+        headers: { cookie: request.headers.cookie ?? '' },
+      }),
+      this.forRequest(request)
+    );
+
+    const value: unknown = await response.json();
+
+    if (!value || typeof value !== 'object' || !Object.keys(value).length)
+      return null;
+    if (response.status !== 200)
+      throw new Error('인증 세션을 확인할 수 없습니다.');
+
+    return value as {
+      user?: { id: string; name?: string | null; email?: string | null };
+      expires: string;
+    };
   }
 }

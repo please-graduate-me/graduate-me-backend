@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ExpressAuth } from '@auth/express';
 import express from 'express';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { AuthService } from './auth/auth.service.js';
+import { normalizeAuthOrigin } from './auth/request-origin.js';
 import { ApiExceptionFilter } from './common/api-exception.filter.js';
 
 async function bootstrap() {
@@ -15,21 +15,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.set('trust proxy', true);
   app.disable('x-powered-by');
-  const publicURL = new URL(process.env.AUTH_URL || 'http://localhost:3000');
-
-  // 내부 프록시 주소 대신 고정된 공개 주소로 인증 콜백을 생성한다.
-  app.use(
-    (
-      request: express.Request,
-      _response: express.Response,
-      next: express.NextFunction
-    ) => {
-      request.headers.host = publicURL.host;
-      request.headers['x-forwarded-host'] = publicURL.host;
-      request.headers['x-forwarded-proto'] = publicURL.protocol.slice(0, -1);
-      next();
-    }
-  );
+  app.use(normalizeAuthOrigin);
 
   // PDF 원본의 base64 전송만 큰 본문을 허용해 일반 변경 요청의 크기와 분리한다.
   app.use(
@@ -51,7 +37,13 @@ async function bootstrap() {
   app.use('/api/ai/explanations', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '16kb' }));
-  app.use(/^\/api\/auth\/(.*)$/, ExpressAuth(app.get(AuthService).config));
+  const auth = app.get(AuthService);
+
+  const authHandler: express.RequestHandler = (request, response, next) =>
+    auth.handle(request, response, next);
+
+  app.use(/^\/api\/auth\/(.*)$/, authHandler);
+
   app.useGlobalFilters(new ApiExceptionFilter());
   app.enableShutdownHooks();
   await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
