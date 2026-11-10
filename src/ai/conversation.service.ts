@@ -36,8 +36,8 @@ function boundedHistory(rows: Pick<AIMessage, 'role' | 'text' | 'status'>[]) {
   return messages.reverse();
 }
 
-@Injectable()
 /** 개인 AI 대화는 선택 출처와 자료 버전에 고정하고 다시 열 때 생성하지 않는다. */
+@Injectable()
 export class ConversationService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,

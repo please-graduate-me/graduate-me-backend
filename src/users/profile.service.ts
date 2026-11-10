@@ -17,8 +17,8 @@ export const profileInputSchema = z.object({
     .transform((values) => [...new Set(values)]),
 });
 
-@Injectable()
 /** 학습 설정과 계정 삭제를 세션 계정 안에서만 처리한다. */
+@Injectable()
 export class ProfileService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async get(userId: string) {

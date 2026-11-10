@@ -11,8 +11,8 @@ import type {
 /** 기존 업무가 공급자 상세 타입을 직접 참조하지 않게 한다. */
 export type { ProviderInput, ProviderResult } from './provider-contracts.js';
 
-@Injectable()
 /** 환경에서 명시한 공급자만 호출하며 키 누락이나 오류에 자동 대체하지 않는다. */
+@Injectable()
 export class ProviderService {
   constructor(
     @Inject(ClovaProviderService)

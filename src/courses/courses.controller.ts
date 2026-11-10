@@ -23,9 +23,9 @@ import {
   courseMemberSchema,
 } from './contracts.js';
 
+/** 수업 역할은 전역 도우미·관리자 권한과 독립적으로 검사한다. */
 @Controller('courses')
 @UseGuards(AuthGuard)
-/** 수업 역할은 전역 도우미·관리자 권한과 독립적으로 검사한다. */
 export class CoursesController {
   constructor(
     @Inject(CoursesService) private readonly courses: CoursesService

@@ -81,6 +81,7 @@ export function anthropicSchema(
 
   if (schema.type === 'object' || schema.properties)
     output.additionalProperties = false;
+  // 공급자가 지원하지 않는 제약은 힌트로 전달하되 서버 원본 스키마 검증은 생략하지 않는다.
   if (Object.keys(hints).length)
     output.description = `${typeof schema.description === 'string' ? schema.description + ' ' : ''}서버 검증 제약: ${JSON.stringify(hints)}`;
 

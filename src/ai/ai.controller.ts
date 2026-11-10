@@ -28,9 +28,9 @@ import {
   exerciseAnswerSchema,
 } from './contracts.js';
 
+/** 저장 결과 조회와 명시적 AI 실행·연습 채점을 서로 다른 경로로 제공한다. */
 @Controller()
 @UseGuards(AuthGuard)
-/** 저장 결과 조회와 명시적 AI 실행·연습 채점을 서로 다른 경로로 제공한다. */
 export class AIController {
   constructor(
     @Inject(LearningAIService) private readonly ai: LearningAIService,

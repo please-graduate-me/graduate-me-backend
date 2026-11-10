@@ -4,8 +4,8 @@ import { DataSource } from 'typeorm';
 import { Video } from '../database/entities/Video.entity.js';
 import type { PublicVideoQuery } from './catalog-contracts.js';
 
-@Injectable()
 /** 공용 목록에 개인 정보가 섞이지 않도록 공개 조회를 분리한다. */
+@Injectable()
 export class CatalogService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   private available(userId?: string) {

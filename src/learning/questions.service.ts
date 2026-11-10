@@ -29,8 +29,8 @@ import type {
   recipientsQuerySchema,
 } from './contracts.js';
 
-@Injectable()
 /** 학생 응답은 명시한 필드만 직렬화해 내부 초안과 메모가 섞이지 않게 한다. */
+@Injectable()
 export class QuestionsService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -123,6 +123,7 @@ export class QuestionsService {
     const source = await this.sources.resolve(userId, input.source);
     let attachment: Record<string, unknown> | null = null;
 
+    // 질문 공유는 학생이 고른 단일 결과만 첨부하고 개인 대화·정답 전체로 확장하지 않는다.
     if (input.attachment) {
       if ('artifactId' in input.attachment) {
         const artifact = await this.db.manager.findOneBy(LearningArtifact, {

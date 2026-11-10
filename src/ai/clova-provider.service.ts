@@ -43,8 +43,8 @@ const measurementSchema = z.object({
   }),
 });
 
-@Injectable()
 /** 명시적 생성 요청에서만 CLOVA Studio를 호출하고 자동 재시도하지 않는다. */
+@Injectable()
 export class ClovaProviderService {
   identity(mode: ProviderMode = 'text') {
     return providerIdentity('naver', mode);
@@ -84,6 +84,7 @@ export class ClovaProviderService {
       model !== (image ? 'HCX-005' : 'HCX-007')
     )
       throw new HttpError(503, '네이버 AI 모델과 주소 설정을 확인해 주세요.');
+    // 공급자 주소를 제한한 뒤 본문을 구성해 설정 오류로 인증키가 외부 호스트에 전송되지 않게 한다.
     validateProviderInput(input);
 
     const messages: { role: string; content: unknown }[] = input.messages.map(

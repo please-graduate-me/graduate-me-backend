@@ -12,9 +12,9 @@ import { learningSettingsSchema } from './settings.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { SettingsService } from './settings.service.js';
 
+/** 다른 계정의 옵션을 변경할 수 없도록 세션의 사용자만 사용한다. */
 @Controller('me/settings')
 @UseGuards(AuthGuard)
-/** 다른 계정의 옵션을 변경할 수 없도록 세션의 사용자만 사용한다. */
 export class SettingsController {
   constructor(
     @Inject(SettingsService) private readonly settings: SettingsService

@@ -58,6 +58,7 @@ export class WorkerService {
 
       if (result.type !== 'complete') throw new Error('완료 결과가 없습니다.');
 
+      // 전사가 저장된 뒤 후속 번역·빈칸이 실패해도 원문 전체 받아쓰기는 보존한다.
       if (await this.queue.complete(job, result, true)) {
         await this.preparation.prepare(job.videoId, controller.signal);
         await this.queue.release(job);

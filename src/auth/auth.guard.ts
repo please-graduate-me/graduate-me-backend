@@ -12,8 +12,8 @@ import { appOrigins } from './origins.js';
 /** 사용자 식별자는 클라이언트 입력 대신 인증 가드가 보장한다. */
 export type UserRequest = Request & { userId: string };
 
-@Injectable()
 /** 세션과 요청 출처를 함께 검사해 다른 계정의 상태 변경을 막는다. */
+@Injectable()
 export class AuthGuard implements CanActivate {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
   async canActivate(context: ExecutionContext) {
@@ -22,6 +22,7 @@ export class AuthGuard implements CanActivate {
 
     if (!session?.user?.id) throw new HttpError(401, '로그인이 필요합니다.');
 
+    // 쿠키가 자동 전송되는 변경 요청은 로그인 여부와 별도로 앱 출처를 확인한다.
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
       if (
         !request.headers.origin ||

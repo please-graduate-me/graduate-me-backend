@@ -1,4 +1,4 @@
-/** 추천 영상의 기본 정보를 앱 내부에서 관리한다. */
+/** 메타데이터 확인 전 등록 제목을 보완할 정적 예시이며 개인 추천 결과와 구분한다. */
 export const recommendations = [
   {
     youtubeId: 'JnfBXjWm7hc',

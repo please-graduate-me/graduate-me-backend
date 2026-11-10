@@ -63,6 +63,7 @@ export function parseTranscript(
       '선택한 언어에서 학습할 발화를 찾지 못했습니다.'
     );
 
+  // 시간 형식만 맞아도 순서가 겹치면 반복 재생과 답안 대상이 어긋나므로 저장 전에 거부한다.
   if (
     segments.some(
       (segment, index) =>

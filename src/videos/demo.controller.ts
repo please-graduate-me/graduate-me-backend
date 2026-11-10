@@ -5,8 +5,8 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { demoYoutubeId, type DemoLesson } from './demo.js';
 import { learningUnits } from './grading.js';
 
-@Controller('demo')
 /** 공개 요청은 고정 체험 영상에만 접근하며 개인 기록을 생성하지 않는다. */
+@Controller('demo')
 export class DemoController {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   @Get()

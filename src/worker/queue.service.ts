@@ -30,6 +30,7 @@ export class QueueService {
         "blankStatus" = CASE WHEN v."blankStatus" IN ('pending','processing') THEN 'failed' ELSE v."blankStatus" END, "processingError" = j."errorMessage"
         FROM "Job" j WHERE j."videoId" = v.id AND j.status = 'failed' AND (v."translationStatus" IN ('pending','processing') OR v."blankStatus" IN ('pending','processing'))`);
 
+      // 이미 시도한 작업은 다시 큐에 올리지 않고 아직 미실행인 작업만 소유권을 획득한다.
       const rows: ClaimedJob[] =
         await tx.query(`SELECT j.*, v."youtubeId", v.language, v."ownerId" FROM "Job" j JOIN "Video" v ON v.id = j."videoId"
         WHERE j.status = 'queued' AND j.attempts = 0 AND j."availableAt" <= now()
@@ -115,6 +116,7 @@ export class QueueService {
 
       if (!owned || owned.status !== 'transcribing') return false;
 
+      // 전사문과 ready 전환을 한 트랜잭션으로 저장해 부분 결과가 학습 자료로 노출되지 않게 한다.
       await tx.insert(
         Segment,
         event.segments.map((segment) => ({ ...segment, videoId: job.videoId }))

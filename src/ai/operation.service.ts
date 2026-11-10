@@ -23,8 +23,8 @@ export function inputFingerprint(value: unknown): string {
     .digest('hex');
 }
 
-@Injectable()
 /** 중복 클릭과 응답 재전송을 한 생성 결과에 연결한다. */
+@Injectable()
 export class OperationService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async run<T extends Record<string, unknown>>(

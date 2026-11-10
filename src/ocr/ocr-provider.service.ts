@@ -5,8 +5,8 @@ import { ClovaOcrProviderService } from './clova-ocr-provider.service.js';
 import { ClaudeOcrProviderService } from './claude-ocr-provider.service.js';
 import type { OcrProviderIdentity, OcrProviderResult } from './contracts.js';
 
-@Injectable()
 /** 업무 API를 바꾸지 않고 설정한 OCR 공급자만 명시적으로 호출한다. */
+@Injectable()
 export class OcrProviderService {
   constructor(
     @Inject(ClovaOcrProviderService)

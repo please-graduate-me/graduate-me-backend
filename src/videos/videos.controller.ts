@@ -18,9 +18,9 @@ import {
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { VideosService } from './videos.service.js';
 
+/** 전송 계층의 입력 검증을 업무 처리와 분리한다. */
 @Controller('videos')
 @UseGuards(AuthGuard)
-/** 전송 계층의 입력 검증을 업무 처리와 분리한다. */
 export class VideosController {
   constructor(@Inject(VideosService) private readonly videos: VideosService) {}
   @Get()

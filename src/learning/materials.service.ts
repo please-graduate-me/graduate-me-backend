@@ -62,6 +62,7 @@ async function pdfContent(input: z.infer<typeof materialInputSchema>) {
     const document = await PDFDocument.load(content, { updateMetadata: false });
 
     if (document.isEncrypted) throw new Error('암호화 원본');
+    // 브라우저가 보낸 페이지 배열만 믿으면 원본 페이지 제한을 우회할 수 있다.
     count = document.getPageCount();
   } catch {
     throw new HttpError(400, '암호화되지 않은 정상 PDF 파일을 등록해 주세요.');
@@ -94,8 +95,8 @@ function snapshot(material: Material) {
   };
 }
 
-@Injectable()
 /** 원본 열람 권한과 개인 읽기 위치·메모를 분리하고 PDF 과거 버전을 보존한다. */
+@Injectable()
 export class MaterialsService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async owned(userId: string, id: string) {
@@ -160,6 +161,7 @@ export class MaterialsService {
     reading?: { currentPage: number; memo: string },
     ocrPages: MaterialOcrPage[] = []
   ) {
+    // OCR은 불변 원본 텍스트를 덮어쓰지 않고 해당 버전의 학습 가능성 판정에만 합친다.
     const pageTexts = material.pages.map(
       (text, index) =>
         ocrPages.find((page) => page.page === index + 1)?.text ?? text

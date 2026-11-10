@@ -42,8 +42,8 @@ export function validateOcrPng(
   return { data, width, height };
 }
 
-@Injectable()
 /** 비공개 임시 원본을 고정된 Poppler 인자로만 변환하고 모든 경로를 정리한다. */
+@Injectable()
 export class PdfRasterizerService {
   async rasterize(page: { data: Buffer; width: number; height: number }) {
     if (

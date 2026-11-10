@@ -16,8 +16,8 @@ export function normalizedExcerpt(value: string) {
   return value.normalize('NFKC').replace(/\s+/g, '');
 }
 
-@Injectable()
 /** 질문과 표현 저장이 같은 원문 접근·발췌 검증을 사용하게 한다. */
+@Injectable()
 export class SourceService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   private async pdfSnapshot(userId: string, id: string, version?: number) {
@@ -53,6 +53,7 @@ export class SourceService {
 
       if (!material || input.page > material.pages.length)
         throw new HttpError(404, '원문 자료를 찾을 수 없습니다.');
+      // OCR 식별자만으로 다른 버전·페이지의 인식 결과를 원문 근거로 가져오지 못하게 한다.
       if (input.ocrId) {
         const ocr = await this.db.manager.findOneBy(MaterialOcrPage, {
           id: input.ocrId,
@@ -96,6 +97,7 @@ export class SourceService {
       if (!segment || !video)
         throw new HttpError(404, '학습 원문을 찾을 수 없습니다.');
 
+      // 과거 질문·답안의 근거를 현재 수정본으로 조용히 바꾸지 않는다.
       const historical =
         input.version && input.version !== segment.version
           ? await this.db.manager.findOneBy(SourceRevision, {

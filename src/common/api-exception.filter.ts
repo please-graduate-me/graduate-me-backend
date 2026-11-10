@@ -8,8 +8,8 @@ import {
 import { ZodError } from 'zod';
 import type { Response } from 'express';
 
-@Catch()
 /** 내부 오류의 상세 정보가 응답에 노출되지 않게 한다. */
+@Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(ApiExceptionFilter.name);
   catch(error: unknown, host: ArgumentsHost) {

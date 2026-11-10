@@ -6,6 +6,7 @@ export async function googleJson(
   init: RequestInit,
   provider: 'GEMINI' | 'YOUTUBE'
 ): Promise<unknown> {
+  // 리디렉션을 따라가며 인증 헤더를 다른 주소로 전송하지 않는다.
   const response = await fetch(url, { ...init, redirect: 'error' });
 
   if (!response.ok) {

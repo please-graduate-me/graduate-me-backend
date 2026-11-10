@@ -59,6 +59,7 @@ import { MaterialVersionsController } from './learning/material-versions.control
 import { MaterialAccessController } from './admin/material-access.controller.js';
 import { MaterialAccessService } from './admin/material-access.service.js';
 
+/** API 기능의 의존성을 하나의 서버 진입점에서 조립한다. */
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
@@ -123,5 +124,4 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessService,
   ],
 })
-/** API 기능의 의존성을 하나의 서버 진입점에서 조립한다. */
 export class AppModule {}

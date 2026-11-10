@@ -26,8 +26,8 @@ import {
   type exerciseAnswerSchema,
 } from './contracts.js';
 
-@Injectable()
 /** 실제 저장 표현·원문·오답을 출제 근거로 사용하고 저장 정답으로 판정한다. */
+@Injectable()
 export class PracticeService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -363,6 +363,7 @@ export class PracticeService {
 
     let feedback: string | null = null;
 
+    // 자유 답변은 AI 피드백만 제공하고 정오·시험 점수를 만들어 내지 않는다.
     if (payload.type === 'free_response') {
       assertLearningEligibility(
         (await this.sources.context(ownerId, row.source)).eligibility

@@ -59,8 +59,8 @@ function batches(segments: Segment[]) {
   return result;
 }
 
-@Injectable()
 /** 최초 영상 등록 흐름에서만 번역과 빈칸 후보를 독립적으로 준비한다. */
+@Injectable()
 export class VideoPreparationService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -75,6 +75,7 @@ export class VideoPreparationService {
       order: { index: 'ASC' },
     });
 
+    // 번역 실패가 빈칸 준비나 저장된 전사 원문 사용을 함께 막지 않도록 단계별 상태를 둔다.
     for (const stage of ['translation', 'blank'] as const) {
       const column =
         stage === 'translation' ? 'translationStatus' : 'blankStatus';

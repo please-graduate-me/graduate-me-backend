@@ -28,8 +28,8 @@ function outputSchema(width: number, height: number) {
   });
 }
 
-@Injectable()
 /** Claude의 이미지 기반 문자·영역 결과는 보정된 신뢰도 없이 저장한다. */
+@Injectable()
 export class ClaudeOcrProviderService {
   constructor(
     @Inject(AnthropicProviderService)

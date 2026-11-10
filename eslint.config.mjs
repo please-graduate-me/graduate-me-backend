@@ -1,3 +1,4 @@
+import exportJSDoc from './tooling/export-jsdoc.mjs';
 import js from '@eslint/js';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import prettier from 'eslint-config-prettier/flat';
@@ -13,8 +14,12 @@ export default defineConfig([
   { languageOptions: { globals: globals.node } },
   prettier,
   {
-    plugins: { '@stylistic': stylistic },
+    plugins: {
+      '@stylistic': stylistic,
+      project: { rules: { 'export-jsdoc': exportJSDoc } },
+    },
     rules: {
+      'project/export-jsdoc': 'error',
       '@stylistic/padding-line-between-statements': [
         'error',
         { blankLine: 'always', prev: '*', next: 'export' },

@@ -6,8 +6,8 @@ import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { authRedirect } from './origins.js';
 
-@Injectable()
 /** 세션과 OAuth 설정이 여러 API에서 다르게 적용되지 않게 한다. */
+@Injectable()
 export class AuthService {
   readonly config: ExpressAuthConfig;
   private readonly logger = new Logger(AuthService.name);
@@ -30,6 +30,7 @@ export class AuthService {
         warn: (code) => {
           if (code !== 'env-url-basepath-redundant') this.logger.warn(code);
         },
+        // 인증 오류의 본문에는 토큰이 섞일 수 있어 오류 종류만 남긴다.
         error: (error) => this.logger.error(error.name),
       },
       callbacks: {

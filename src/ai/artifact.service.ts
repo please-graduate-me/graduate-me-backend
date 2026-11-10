@@ -42,8 +42,8 @@ export function exerciseResult(row: ExerciseAttempt) {
   };
 }
 
-@Injectable()
 /** 불변 수정본과 현재 표시 상태를 분리하고 정답 필드를 서버에 남긴다. */
+@Injectable()
 export class ArtifactService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async owned(ownerId: string, id: string) {
@@ -142,6 +142,7 @@ export class ArtifactService {
     const dto = await this.dto(row),
       payload = { ...dto.payload };
 
+    // 서버에 저장한 채점 근거와 제출 전 학습자에게 보이는 문제를 같은 DTO로 노출하지 않는다.
     delete payload.answer;
     delete payload.explanation;
     delete payload.hint;

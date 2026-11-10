@@ -9,8 +9,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { requireReadableVideo } from '../videos/access.js';
 import { HttpError } from '../common/http-error.js';
 
-@Injectable()
 /** 공유 자료와 방문 집계를 개인 학습 기록에서 분리한다. */
+@Injectable()
 export class SharesService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   private async active(tx: EntityManager, id: string, userId: string) {

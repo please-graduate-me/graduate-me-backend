@@ -22,9 +22,9 @@ import {
   communityReactionSchema,
 } from './contracts.js';
 
+/** 로그인한 계정과 글의 공개 범위로 일반 커뮤니티 접근을 제한한다. */
 @Controller('community')
 @UseGuards(AuthGuard)
-/** 로그인한 계정과 글의 공개 범위로 일반 커뮤니티 접근을 제한한다. */
 export class CommunityController {
   constructor(
     @Inject(CommunityService) private readonly community: CommunityService

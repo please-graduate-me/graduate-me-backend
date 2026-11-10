@@ -13,9 +13,9 @@ import { createShareSchema, shareVisitSchema } from './contracts.js';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { SharesService } from './shares.service.js';
 
+/** 공유 조회·집계·학습 시작 모두 로그인한 사용자에게만 허용한다. */
 @Controller('shares')
 @UseGuards(AuthGuard)
-/** 공유 조회·집계·학습 시작 모두 로그인한 사용자에게만 허용한다. */
 export class SharesController {
   constructor(@Inject(SharesService) private readonly shares: SharesService) {}
   @Post()

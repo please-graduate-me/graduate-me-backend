@@ -18,9 +18,9 @@ import {
   materialVersionInputSchema,
 } from './materials.service.js';
 
+/** 원본 교체를 별도 버전으로 저장하고 권한이 있는 계정에만 과거 파일을 제공한다. */
 @Controller('materials')
 @UseGuards(AuthGuard)
-/** 원본 교체를 별도 버전으로 저장하고 권한이 있는 계정에만 과거 파일을 제공한다. */
 export class MaterialVersionsController {
   constructor(
     @Inject(MaterialsService) private readonly materials: MaterialsService

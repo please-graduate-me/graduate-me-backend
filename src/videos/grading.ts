@@ -29,6 +29,7 @@ export function grade(expectedText: string, actualText: string): Grade {
   const expected = tokens(expectedText),
     actual = tokens(actualText);
 
+  // 차이 위치를 설명하기 위한 정렬이며 최종 정오 판정은 원문 문자열 전체 일치로 유지한다.
   const matrix = Array.from(
     { length: expected.length + 1 },
     () => new Uint16Array(actual.length + 1)
@@ -102,6 +103,7 @@ export function blankIndices(
         ...eligible,
       ];
 
+  // 후보가 부족하면 같은 위치를 중복 출제하지 않고 실제 생성한 빈칸 수를 사용한다.
   const count = Math.min(
     answerLimits.blanks,
     Math.max(1, Math.round((eligible.length * ratio) / 100)),

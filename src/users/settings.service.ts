@@ -4,8 +4,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { LearningSettings } from './settings.js';
 import { HttpError } from '../common/http-error.js';
 
-@Injectable()
 /** 계정별 학습 옵션을 영상의 진도와 독립적으로 관리한다. */
+@Injectable()
 export class SettingsService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async get(userId: string) {

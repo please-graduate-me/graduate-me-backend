@@ -30,8 +30,8 @@ function sourcePath(source: LearningSource) {
   return `/learn/${encodeURIComponent(source.videoId)}?${query}`;
 }
 
-@Injectable()
 /** 학생 홈과 학습 기록에 본인이 실제 수행한 활동만 합쳐 제공한다. */
+@Injectable()
 export class LearningService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -120,6 +120,7 @@ export class LearningService {
       }),
     ]);
 
+    // 기록별 집계 단위를 보존해 PDF 읽기와 영상 정답·자가점검을 같은 완료량으로 섞지 않는다.
     const items = [
       ...materials.map((m) => ({
         id: `material:${m.id}`,

@@ -14,7 +14,7 @@
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "check": "pnpm format && pnpm lint && pnpm typecheck",
+    "check": "pnpm format && pnpm lint && pnpm typecheck && pnpm test:comments",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:show": "node --import tsx ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts",
@@ -22,7 +22,8 @@
     "dev:worker": "pnpm build && node dist/worker/main.js",
     "dev:app": "nest start",
     "dev:down": "docker compose -f compose.yaml -f compose.dev.yaml down",
-    "dev:logs": "docker compose logs --follow --tail=50"
+    "dev:logs": "docker compose logs --follow --tail=50",
+    "test:comments": "node --test tooling/export-jsdoc.test.mjs"
   },
   "dependencies": {
     "@auth/core": "0.41.3",

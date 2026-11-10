@@ -46,8 +46,8 @@ function pageCost() {
     : null;
 }
 
-@Injectable()
 /** 명시적 인식만 실행하며 완료 결과와 원본 버전은 수정하지 않는다. */
+@Injectable()
 export class OcrService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -156,6 +156,7 @@ export class OcrService {
       { ...key, provider: identity.provider, model: identity.model },
       async () => {
         const claim = await this.db.transaction(async (tx) => {
+          // 페이지 중복 실행과 공급자 동시 요청을 원자적으로 확인해 OCR 비용 중복을 막는다.
           await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
             'pdf-ocr-global',
           ]);

@@ -42,8 +42,8 @@ function errorCategory(row: Evidence, language: string) {
   return expected.length > 100 ? '긴 구절의 차이' : '원문과 답안 차이';
 }
 
-@Injectable()
 /** 실제 제출 근거만 집계하며 검증되지 않은 능력 진단이나 AI 요약으로 표시하지 않는다. */
+@Injectable()
 export class InsightsService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async report(userId: string, language: 'en' | 'th', days: number) {
@@ -61,6 +61,7 @@ export class InsightsService {
       [userId, language, since]
     );
 
+    // 정답을 본 뒤의 성공과 힌트 사용을 독립 수행의 약점·정답률 근거로 섞지 않는다.
     const unassisted = rows.filter((r) => !r.revealed && r.hintCount === 0);
     const wrong = unassisted.filter((r) => !r.correct);
     const categories = new Map<string, number>();
@@ -189,6 +190,7 @@ export class InsightsService {
       [userId, language]
     );
 
+    // 선정에 사용한 관심·길이·완료 근거만 이유로 표시하고 미측정 발화 난이도를 단정하지 않는다.
     const items = rows
       .map((row) => {
         const matchedInterest = user.interests.find((interest) =>

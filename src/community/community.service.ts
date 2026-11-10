@@ -21,8 +21,8 @@ type Post = {
   hiddenAt: Date | null;
 };
 
-@Injectable()
 /** 일반 커뮤니티는 개인 질문·도우미 검토와 분리하고 게시한 글·발췌만 공개한다. */
+@Injectable()
 export class CommunityService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -54,6 +54,7 @@ export class CommunityService {
       [row.id, userId, row.ownerId]
     );
 
+    // 글을 읽을 권한이 있어도 다른 수신자 계정 목록까지 공개할 필요는 없다.
     return {
       ...row,
       allowedUserIds: row.ownerId === userId ? row.allowedUserIds : [],
@@ -102,6 +103,7 @@ export class CommunityService {
     )
       throw new HttpError(400, '공개할 계정을 확인해 주세요.');
 
+    // 선택 발췌만 저장해 비공개 PDF·원문 전체의 권한이 글 공개로 함께 열리지 않게 한다.
     const source = input.source
       ? await this.sources.resolve(userId, input.source)
       : null;

@@ -45,8 +45,8 @@ export function validateCitations(
     );
 }
 
-@Injectable()
 /** 명시적 자료 준비와 상세 설명만 생성하고 조회에는 저장된 결과를 사용한다. */
+@Injectable()
 export class LearningAIService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -217,6 +217,7 @@ export class LearningAIService {
       cacheKey: key,
     });
 
+    // 저장된 결과는 현재 생성 설정이나 적합성이 달라도 비용 없이 다시 볼 수 있어야 한다.
     if (existing) return this.artifacts.dto(existing);
     assertLearningEligibility(context.eligibility);
     this.ensureConfigured(input.image ? 'image' : 'text');
@@ -317,6 +318,7 @@ export class LearningAIService {
       ocrPages.find((row) => row.page === page)?.text ??
       material.pages[page - 1];
 
+    // 표지가 부적합하더라도 선택한 범위 안의 학습 가능한 페이지 준비를 막지 않는다.
     const rangeEligibility = Array.from(
       { length: input.toPage - input.fromPage + 1 },
       (_, index) =>

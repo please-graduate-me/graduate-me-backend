@@ -13,9 +13,9 @@ import { z } from 'zod';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { ProfileService, profileInputSchema } from './profile.service.js';
 
+/** 본인 프로필 변경과 명시적인 계정 탈퇴만 허용한다. */
 @Controller('me')
 @UseGuards(AuthGuard)
-/** 본인 프로필 변경과 명시적인 계정 탈퇴만 허용한다. */
 export class ProfileController {
   constructor(
     @Inject(ProfileService) private readonly profiles: ProfileService

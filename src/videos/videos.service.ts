@@ -25,8 +25,8 @@ function progressPercent(completed: number, count: number) {
     : Math.min(99, Math.round((completed / count) * 100));
 }
 
-@Injectable()
 /** 영상과 계정별 진도 변경을 트랜잭션 경계 안에서 처리한다. */
+@Injectable()
 export class VideosService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async list(userId: string) {
@@ -121,6 +121,7 @@ export class VideosService {
         lock: { mode: 'pessimistic_read' },
       });
 
+      // 완료된 동일 분석은 재사용하고 신규 비용과 일일 등록 한도는 새 자료에만 적용한다.
       if (!video) {
         this.requireTranscriptionEnabled();
 
@@ -226,6 +227,7 @@ export class VideosService {
     const { autoReplay, replayDelay, replayCount, playbackRate } =
       progress.user;
 
+    // 두 받아쓰기 모드의 정답도 한 구절로 세고 수정 전 버전의 정답은 현재 진도에서 제외한다.
     const completedCount = new Set(
       states
         .filter(

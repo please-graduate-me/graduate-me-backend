@@ -64,8 +64,8 @@ function shareDetail(row: ExcerptShare) {
   };
 }
 
-@Injectable()
 /** 개인 주석과 선택 발췌 공유는 원본·대화·답안의 접근 권한과 분리한다. */
+@Injectable()
 export class RecordsService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -163,6 +163,7 @@ export class RecordsService {
   async share(userId: string, input: z.infer<typeof excerptShareInputSchema>) {
     const source = await this.sources.resolve(userId, input.source);
 
+    // 공개 링크에 과거 수신자 목록이 남지 않도록 계정 전용 공유에만 허용 계정을 보존한다.
     const allowedUserIds =
       input.visibility === 'accounts' ? [...new Set(input.allowedUserIds)] : [];
 

@@ -1,6 +1,7 @@
 import { HttpError } from '../common/http-error.js';
 
 function configuredLimit(name: string, fallback: number, maximum: number) {
+  // 기존 환경 파일의 큰 한도도 현재 프로필의 상한을 넘어설 수 없게 한다.
   const value = Number(process.env[name] || fallback);
 
   return Number.isFinite(value) && value >= 1

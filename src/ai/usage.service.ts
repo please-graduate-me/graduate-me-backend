@@ -62,8 +62,8 @@ export interface UsageMeasurement {
   provider?: AIUsage['provider'];
 }
 
-@Injectable()
 /** 유료 호출 직전에 계정별 요청·동시 실행·예약 토큰 한도를 확인한다. */
+@Injectable()
 export class UsageService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async execute<T>(
@@ -136,6 +136,7 @@ export class UsageService {
       // UTC 초기화는 일일 사용량만 비우고 전날 시작한 실행의 동시 제한은 유지한다.
       const dailyEntries = entries.filter((entry) => entry.createdAt >= day);
 
+      // 실측 토큰이 일부 없으면 소비량을 0으로 취급하지 않고 호출 전 예약량을 유지한다.
       const tokens = dailyEntries.reduce(
         (sum, e) =>
           sum +

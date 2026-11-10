@@ -18,9 +18,9 @@ import {
 } from './contracts.js';
 import { InsightsService } from './insights.service.js';
 
+/** 개인 분석은 세션 계정의 기록만 사용하고 조회 중 외부 AI를 호출하지 않는다. */
 @Controller()
 @UseGuards(AuthGuard)
-/** 개인 분석은 세션 계정의 기록만 사용하고 조회 중 외부 AI를 호출하지 않는다. */
 export class InsightsController {
   constructor(
     @Inject(InsightsService) private readonly insights: InsightsService

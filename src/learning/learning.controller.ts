@@ -35,9 +35,9 @@ import {
   expressionQuerySchema,
 } from './contracts.js';
 
+/** 학생 원문 학습의 입력을 검증하고 계정 식별자는 인증 세션에서 받는다. */
 @Controller()
 @UseGuards(AuthGuard)
-/** 학생 원문 학습의 입력을 검증하고 계정 식별자는 인증 세션에서 받는다. */
 export class LearningController {
   constructor(
     @Inject(MaterialsService) private readonly materials: MaterialsService,

@@ -56,6 +56,7 @@ export function parseOcrResult(
       'OCR 인식 영역과 PDF 페이지 비율이 일치하지 않습니다.'
     );
 
+  // 범위를 벗어난 좌표를 보정해 숨기면 원문과 다른 위치가 선택 근거가 되므로 거부한다.
   const fields = image.fields.map((field) => {
     const vertices = field.boundingPoly.vertices;
 
@@ -129,8 +130,8 @@ async function boundedJson(response: Response) {
   }
 }
 
-@Injectable()
 /** 명시적 페이지 인식 요청에서만 CLOVA OCR General V2를 한 번 호출한다. */
+@Injectable()
 export class ClovaOcrProviderService {
   get configured() {
     return Boolean(

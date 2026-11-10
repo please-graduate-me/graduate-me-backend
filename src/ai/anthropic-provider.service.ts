@@ -42,8 +42,8 @@ const responseSchema = z.object({
   usage: usageSchema.optional(),
 });
 
-@Injectable()
 /** 선택된 Claude 모델을 직접 한 번 호출하며 실패 시 다른 공급자를 실행하지 않는다. */
+@Injectable()
 export class AnthropicProviderService {
   identity(mode: ProviderMode = 'text') {
     return providerIdentity('anthropic', mode);
@@ -163,6 +163,7 @@ export class AnthropicProviderService {
       });
     }
 
+    // 계량값을 먼저 기록해야 형식이 잘못된 유료 응답도 일일 예산에서 빠지지 않는다.
     const parsed = responseSchema.safeParse(value);
 
     if (!parsed.success)

@@ -54,8 +54,8 @@ type Assignment = {
 };
 type Membership = { role: 'teacher' | 'assistant' | 'student' };
 
-@Injectable()
 /** 수업 소속·원본 권한·과제 제출을 개인 학습 기록과 별도로 검증한다. */
+@Injectable()
 export class CoursesService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   private async membership(
@@ -64,6 +64,7 @@ export class CoursesService {
     staff = false,
     tx = this.db.manager
   ) {
+    // 수업 역할만 확인하며 전역 도우미·운영 권한을 수업 개설로 부여하지 않는다.
     const rows: Membership[] = await tx.query(
       'SELECT role FROM "CourseMember" WHERE "courseId"=$1 AND "userId"=$2',
       [courseId, userId]
@@ -401,6 +402,7 @@ export class CoursesService {
       staff ? [id] : [id, userId]
     );
 
+    // 담당자 조회와 학생 제출 후 공개 정책을 구분해 과제 응답에 정답이 먼저 섞이지 않게 한다.
     const reveal =
       staff ||
       (row.revealAfterSubmit &&
@@ -533,6 +535,7 @@ export class CoursesService {
         return this.submissionDto(existing[0], false);
       }
 
+      // 제출 중 과제 수정이 끼어들어 채점 스냅샷과 저장 버전이 달라지지 않게 한다.
       await tx.query(
         'SELECT id FROM "CourseAssignment" WHERE id=$1 FOR SHARE',
         [id]
@@ -549,6 +552,7 @@ export class CoursesService {
           409,
           '과제가 변경되었습니다. 최신 버전을 확인해 주세요.'
         );
+      // 기한은 최종 제출 시점에 판단하고 재전송은 기존 제출의 기한 판정을 그대로 보존한다.
       const late = Date.now() > row.dueAt.getTime();
 
       if (late && !row.allowLate)

@@ -33,8 +33,8 @@ export function expressionDetail(row: Expression) {
   };
 }
 
-@Injectable()
 /** 표현집의 개인 뜻·메모와 자가점검 기록을 소유 계정에 한정한다. */
+@Injectable()
 export class ExpressionsService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -198,6 +198,7 @@ export class ExpressionsService {
     const expression = await this.owned(userId, input.expressionId);
 
     const row = await this.db.transaction(async (tx) => {
+      // 같은 자가점검의 네트워크 재전송은 복습 횟수를 늘리지 않고 최초 스냅샷을 돌려준다.
       if (input.requestId) {
         await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
           `self-practice:${input.requestId}`,

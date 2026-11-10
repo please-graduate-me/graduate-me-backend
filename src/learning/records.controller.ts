@@ -22,9 +22,9 @@ import {
   excerptShareInputSchema,
 } from './records.service.js';
 
+/** 인증한 본인의 개인 주석과 명시적인 발췌 공유만 처리한다. */
 @Controller()
 @UseGuards(AuthGuard)
-/** 인증한 본인의 개인 주석과 명시적인 발췌 공유만 처리한다. */
 export class RecordsController {
   constructor(
     @Inject(RecordsService) private readonly records: RecordsService
