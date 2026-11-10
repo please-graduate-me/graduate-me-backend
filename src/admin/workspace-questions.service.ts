@@ -44,8 +44,8 @@ export function reviewDetail(r: ReviewRequest) {
   };
 }
 
-@Injectable()
 /** 답변·내부 메모·검토를 배정된 질문의 현재 권한 안에서 처리한다. */
+@Injectable()
 export class WorkspaceQuestionsService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -61,6 +61,7 @@ export class WorkspaceQuestionsService {
       .createQueryBuilder('q');
 
     if (access.role !== 'admin') {
+      // 과거 배정이 남아 있어도 현재 언어·자료 권한을 잃은 질문은 목록에서 숨긴다.
       builder.where('q.assigneeId = :userId AND q.revokedAt IS NULL', {
         userId,
       });
@@ -81,6 +82,7 @@ export class WorkspaceQuestionsService {
     return builder;
   }
   private async readable(userId: string, id: string, tx?: EntityManager) {
+    // 변경 요청에서는 같은 질문의 배정·공유 상태를 잠가 권한 판정 뒤 덮어쓰기를 막는다.
     const row = tx
       ? await tx.findOne(LearningQuestion, {
           where: { id },
@@ -334,11 +336,13 @@ export class WorkspaceQuestionsService {
     const row = await this.db.manager.findOneBy(ReviewRequest, { id });
 
     if (!row) throw new HttpError(404, '검토 요청을 찾을 수 없습니다.');
+    // 검토 식별자를 알아도 연결 질문의 현재 배정 범위를 우회할 수 없다.
     await this.readable(userId, row.questionId);
 
     return reviewDetail(row);
   }
   async reviews(userId: string, query?: HistoryQuery) {
+    // 질문 ID를 앱으로 넘기지 않고 같은 ACL 하위 쿼리 안에서 이력을 제한한다.
     const scope = (await this.scoped(userId)).select('q.id');
 
     const builder = this.db
@@ -417,6 +421,7 @@ export class WorkspaceQuestionsService {
     const builder = this.db.getRepository(ReviewEvent).createQueryBuilder('e');
 
     if (access.role !== 'admin') {
+      // 도우미에게는 공통 운영 기록과 타인 질문의 내부 메모도 공개하지 않는다.
       const scope = (await this.scoped(userId)).select('q.id');
 
       builder

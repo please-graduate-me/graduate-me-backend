@@ -17,9 +17,9 @@ import {
   materialAccessInputSchema,
 } from './material-access.service.js';
 
+/** 운영자 전용 자료 공개 설정에도 소유권과 기존 공개 여부를 재검사한다. */
 @Controller('admin/workspace/materials')
 @UseGuards(AuthGuard, AdminGuard)
-/** 운영자 전용 자료 공개 설정에도 소유권과 기존 공개 여부를 재검사한다. */
 export class MaterialAccessController {
   constructor(
     @Inject(MaterialAccessService)

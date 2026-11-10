@@ -8,8 +8,8 @@ import type { UserRequest } from '../auth/auth.guard.js';
 import { HttpError } from '../common/http-error.js';
 import { AdminService } from './admin.service.js';
 
-@Injectable()
 /** 화면 노출 여부와 별개로 관리자 API 접근을 서버에서 차단한다. */
+@Injectable()
 export class AdminGuard implements CanActivate {
   constructor(@Inject(AdminService) private readonly admin: AdminService) {}
   async canActivate(context: ExecutionContext) {

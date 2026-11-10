@@ -24,8 +24,8 @@ export const materialAccessInputSchema = z
     { message: '열람 가능한 계정을 한 명 이상 선택해 주세요.' }
   );
 
-@Injectable()
 /** 타인의 개인 자료를 강제 공개하지 않고 기존 공용 자료의 접근 범위를 관리한다. */
+@Injectable()
 export class MaterialAccessService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -92,6 +92,7 @@ export class MaterialAccessService {
         if (!row) throw new HttpError(404, 'PDF 자료를 찾을 수 없습니다.');
         const current = await tx.findOneBy(MaterialAccess, { id, kind: 'pdf' });
 
+        // 운영 권한으로 타인의 비공개 PDF를 임의 공개하지 못하게 한다.
         if (row.ownerId !== actorId && current?.visibility !== 'public')
           throw new HttpError(
             403,
@@ -119,6 +120,7 @@ export class MaterialAccessService {
         );
       }
 
+      // 접근 범위 수정만으로 원문·개인 기록의 버전은 바꾸지 않는다.
       await tx.upsert(
         MaterialAccess,
         {

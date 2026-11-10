@@ -38,8 +38,8 @@ const segmentPayloadSchema = z.object({
 
 type ContentKind = 'explanation' | 'practice' | 'segment';
 
-@Injectable()
 /** 공유된 대상의 실제 수정·검토를 버전별 기록과 영향 표시로 연결한다. */
+@Injectable()
 export class ContentService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,
@@ -75,6 +75,7 @@ export class ContentService {
     if (edit && (!access.canEdit || !access.canReview))
       throw new HttpError(403, '자료 수정과 검토 권한이 필요합니다.');
     if (kind === 'segment') {
+      // 원본 열람 권한과 질문에서 동의한 구절 발췌의 검토 권한은 구분한다.
       if (question.source.kind !== 'video' || question.source.segmentId !== id)
         throw new HttpError(404, '질문에서 공유한 원문만 확인할 수 있습니다.');
     } else if (
@@ -213,6 +214,7 @@ export class ContentService {
     id: string,
     reason: string
   ) {
+    // 의존 결과는 새로 만들지 않고 확인 필요 상태만 바꿔 과거 답안의 근거를 남긴다.
     const rows = await tx.find(LearningArtifact);
 
     for (const a of rows) {
@@ -578,6 +580,7 @@ export class ContentService {
       if (!row || row.version !== input.version)
         throw new HttpError(409, '현재 문항 버전을 확인해 주세요.');
 
+      // 문항 노출을 중단해도 풀이 기록과 버전별 정답을 삭제하지 않는다.
       await tx.update(
         LearningArtifact,
         { id },

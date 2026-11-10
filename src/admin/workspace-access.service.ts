@@ -20,8 +20,8 @@ export function helperCanAccess(
   );
 }
 
-@Injectable()
 /** 학생과 별도인 admin 앱의 역할과 담당 범위를 서버에서 판정한다. */
+@Injectable()
 export class WorkspaceAccessService {
   constructor(
     @Inject(DataSource) private readonly db: DataSource,

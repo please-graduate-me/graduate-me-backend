@@ -8,8 +8,8 @@ import { ShareVisit } from '../database/entities/ShareVisit.entity.js';
 import { ShareStart } from '../database/entities/ShareStart.entity.js';
 import { HttpError } from '../common/http-error.js';
 
-@Injectable()
 /** 운영자가 지정한 계정만 공유자 정보와 집계를 조회하게 한다. */
+@Injectable()
 export class AdminService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async allowed(userId: string) {
@@ -101,6 +101,7 @@ export class AdminService {
     });
   }
   async revoke(id: string) {
+    // 반복 철회는 성공으로 유지하되 존재하지 않는 링크와는 구분한다.
     const result = await this.db.manager.update(
       ShareLink,
       { id, revokedAt: IsNull() },
