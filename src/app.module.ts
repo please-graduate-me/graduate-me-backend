@@ -1,3 +1,5 @@
+import { CommunityController } from './community/community.controller.js';
+import { CommunityService } from './community/community.service.js';
 import { CoursesController } from './courses/courses.controller.js';
 import { CoursesService } from './courses/courses.service.js';
 import { InsightsController } from './insights/insights.controller.js';
@@ -60,6 +62,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    CommunityController,
     CoursesController,
     InsightsController,
     OcrController,
@@ -80,6 +83,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    CommunityService,
     CoursesService,
     InsightsService,
     OcrService,
