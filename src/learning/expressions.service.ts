@@ -197,17 +197,43 @@ export class ExpressionsService {
   async practice(userId: string, input: z.infer<typeof practiceInputSchema>) {
     const expression = await this.owned(userId, input.expressionId);
 
-    const row = await this.db.manager.save(PracticeAttempt, {
-      ownerId: userId,
-      expressionId: expression.id,
-      answer: input.answer,
-      correct: input.correct,
-      mode: input.mode,
-      snapshot: {
-        text: expression.text,
-        meaning: expression.meaning,
-        source: expression.source,
-      },
+    const row = await this.db.transaction(async (tx) => {
+      if (input.requestId) {
+        await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `self-practice:${input.requestId}`,
+        ]);
+
+        const existing = await tx.findOneBy(PracticeAttempt, {
+          id: input.requestId,
+        });
+
+        if (existing) {
+          if (
+            existing.ownerId !== userId ||
+            existing.expressionId !== input.expressionId ||
+            existing.answer !== input.answer ||
+            existing.correct !== input.correct ||
+            existing.mode !== input.mode
+          )
+            throw new HttpError(409, '이미 사용한 자가점검 요청 식별자입니다.');
+
+          return existing;
+        }
+      }
+
+      return tx.save(PracticeAttempt, {
+        ...(input.requestId ? { id: input.requestId } : {}),
+        ownerId: userId,
+        expressionId: expression.id,
+        answer: input.answer,
+        correct: input.correct,
+        mode: input.mode,
+        snapshot: {
+          text: expression.text,
+          meaning: expression.meaning,
+          source: expression.source,
+        },
+      });
     });
 
     return { id: row.id, createdAt: row.createdAt };

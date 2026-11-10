@@ -137,6 +137,7 @@ export const messageInputSchema = z.object({
 
 /** 자가점검과 자동 채점을 구분해 연습 당시 내용을 보존한다. */
 export const practiceInputSchema = z.object({
+  requestId: z.uuid().optional(),
   expressionId: z.string().uuid(),
   answer: z.string().max(5000),
   correct: z.boolean(),
