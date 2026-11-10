@@ -166,3 +166,16 @@ export type PracticePayload = z.infer<typeof practicePayloadSchema>;
 
 /** 실행 가능한 원문별 질의 필터이다. */
 export type SourceQuery = z.infer<typeof sourceQuerySchema>;
+
+/** 운영 사용량의 필터와 페이지는 전체 원장에서 적용하며 표시할 일부 행과 집계를 분리한다. */
+export const usageQuerySchema = z.object({
+  provider: z.enum(['all', 'anthropic', 'naver', 'gemini']).default('all'),
+  status: z.enum(['all', 'running', 'succeeded', 'failed']).default('all'),
+  period: z.enum(['all', '7', '30']).default('all'),
+  q: z.string().trim().max(100).default(''),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
+});
+
+/** controller 검증과 운영 원장 조회가 같은 조건을 사용하게 한다. */
+export type UsageQuery = z.infer<typeof usageQuerySchema>;

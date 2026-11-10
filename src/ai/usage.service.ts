@@ -1,6 +1,8 @@
+import { usageQuerySchema, type UsageQuery } from './contracts.js';
+import { containsPattern } from '../database/query.js';
 import { materialPolicy } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, IsNull, MoreThanOrEqual } from 'typeorm';
+import { DataSource, In, IsNull, MoreThanOrEqual } from 'typeorm';
 import { AIUsage } from '../database/entities/AIUsage.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { HttpError } from '../common/http-error.js';
@@ -284,54 +286,122 @@ export class UsageService {
       throw error;
     }
   }
-  async report() {
-    const rows = await this.db.manager.find(AIUsage, {
-      order: { createdAt: 'DESC' },
-      take: 100,
+  async report(query: UsageQuery = usageQuerySchema.parse({})) {
+    return this.db.transaction('REPEATABLE READ', async (tx) => {
+      const builder = tx
+        .getRepository(AIUsage)
+        .createQueryBuilder('a')
+        .leftJoin('User', 'u', 'u.id = a.ownerId');
+
+      if (query.provider !== 'all')
+        builder.andWhere('a.provider=:provider', { provider: query.provider });
+      if (query.status !== 'all')
+        builder.andWhere('a.status=:status', { status: query.status });
+      if (query.period !== 'all')
+        builder.andWhere('a."createdAt" >= :since', {
+          since: new Date(Date.now() - Number(query.period) * 86400000),
+        });
+      if (query.q)
+        builder.andWhere(
+          '(a.task ILIKE :q OR a.model ILIKE :q OR a."sourceKey" ILIKE :q OR a.id ILIKE :q OR u.name ILIKE :q OR a.error ILIKE :q)',
+          { q: containsPattern(query.q) }
+        );
+
+      // 집계는 현재 페이지가 아니라 같은 필터를 통과한 원장 전체에 적용한다.
+      const rows = await builder
+        .clone()
+        .orderBy('a.createdAt', 'DESC')
+        .addOrderBy('a.id', 'ASC')
+        .skip((query.page - 1) * query.limit)
+        .take(query.limit)
+        .getMany();
+
+      const summary = await builder
+        .clone()
+        .select('count(*)::int', 'requests')
+        .addSelect(
+          "count(*) FILTER(WHERE a.status='succeeded')::int",
+          'succeeded'
+        )
+        .addSelect("count(*) FILTER(WHERE a.status='failed')::int", 'failed')
+        .addSelect("count(*) FILTER(WHERE a.status='running')::int", 'running')
+        .addSelect('COALESCE(sum(a."inputTokens"),0)', 'inputTokens')
+        .addSelect('COALESCE(sum(a."outputTokens"),0)', 'outputTokens')
+        .addSelect('COALESCE(sum(a."reservedTokens"),0)', 'reservedTokens')
+        .addSelect(
+          'count(*) FILTER(WHERE a."inputTokens" IS NULL OR a."outputTokens" IS NULL)::int',
+          'unmeasuredRequests'
+        )
+        .addSelect('sum(a."estimatedCost")', 'estimatedCost')
+        .getRawOne<{
+          requests: number;
+          succeeded: number;
+          failed: number;
+          running: number;
+          inputTokens: string;
+          outputTokens: string;
+          reservedTokens: string;
+          unmeasuredRequests: number;
+          estimatedCost: string | null;
+        }>();
+
+      const userIds = [
+        ...new Set(rows.flatMap((row) => (row.ownerId ? [row.ownerId] : []))),
+      ];
+
+      const users = new Map(
+        (userIds.length ? await tx.findBy(User, { id: In(userIds) }) : []).map(
+          (user) => [user.id, user]
+        )
+      );
+
+      const items = rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        task: r.task,
+        model: r.model,
+        user: {
+          id: r.ownerId,
+          name: r.ownerId ? (users.get(r.ownerId)?.name ?? null) : null,
+        },
+        sourceKey: r.sourceKey,
+        status: r.status,
+        inputTokens: r.inputTokens,
+        outputTokens: r.outputTokens,
+        elapsedMs: r.elapsedMs,
+        estimatedCost: r.estimatedCost,
+        actualCost: r.actualCost,
+        error: r.error,
+        createdAt: r.createdAt,
+      }));
+
+      const total = summary?.requests ?? 0;
+
+      return {
+        currency: 'USD' as const,
+        items,
+        page: query.page,
+        limit: query.limit,
+        total,
+        hasMore: query.page * query.limit < total,
+        summary: {
+          requests: total,
+          succeeded: summary?.succeeded ?? 0,
+          failed: summary?.failed ?? 0,
+          running: summary?.running ?? 0,
+          inputTokens: Number(summary?.inputTokens ?? 0),
+          outputTokens: Number(summary?.outputTokens ?? 0),
+          reservedTokens: Number(summary?.reservedTokens ?? 0),
+          unmeasuredRequests: summary?.unmeasuredRequests ?? 0,
+          estimatedCost:
+            summary?.estimatedCost === null ||
+            summary?.estimatedCost === undefined
+              ? null
+              : Number(summary.estimatedCost),
+          actualCost: null,
+        },
+        limits: aiLimits(),
+      };
     });
-
-    const items = await Promise.all(
-      rows.map(async (r) => {
-        const user = r.ownerId
-          ? await this.db.manager.findOneBy(User, { id: r.ownerId })
-          : null;
-
-        return {
-          id: r.id,
-          provider: r.provider,
-          task: r.task,
-          model: r.model,
-          user: { id: r.ownerId, name: user?.name ?? null },
-          sourceKey: r.sourceKey,
-          status: r.status,
-          inputTokens: r.inputTokens,
-          outputTokens: r.outputTokens,
-          elapsedMs: r.elapsedMs,
-          estimatedCost: r.estimatedCost,
-          actualCost: r.actualCost,
-          error: r.error,
-          createdAt: r.createdAt,
-        };
-      })
-    );
-
-    const hasEstimate = rows.some((r) => r.estimatedCost !== null);
-
-    return {
-      currency: 'USD' as const,
-      items,
-      summary: {
-        requests: rows.length,
-        succeeded: rows.filter((r) => r.status === 'succeeded').length,
-        failed: rows.filter((r) => r.status === 'failed').length,
-        inputTokens: rows.reduce((a, r) => a + (r.inputTokens ?? 0), 0),
-        outputTokens: rows.reduce((a, r) => a + (r.outputTokens ?? 0), 0),
-        estimatedCost: hasEstimate
-          ? rows.reduce((a, r) => a + (r.estimatedCost ?? 0), 0)
-          : null,
-        actualCost: null,
-      },
-      limits: aiLimits(),
-    };
   }
 }
