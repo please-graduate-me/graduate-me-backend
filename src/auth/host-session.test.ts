@@ -199,6 +199,7 @@ describe('허용된 앱별 OAuth·host-only 세션 계약', () => {
         expect(cookie).not.toMatch(/;\s*Domain=/i);
       }
     }
+
     expect(auth.config.useSecureCookies).toBeUndefined();
     expect(auth.config.providers[0]).not.toHaveProperty('clientId');
   });
