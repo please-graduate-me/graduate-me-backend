@@ -76,7 +76,10 @@ export function createRequestLogger(
       write(
         JSON.stringify({
           event: 'http_request',
-          timestamp: new Date().toISOString(),
+          // 서버 TZ와 무관하게 한국 시각의 날짜와 +09:00 오프셋을 함께 기록한다.
+          timestamp: new Date(Date.now() + 9 * 60 * 60 * 1000)
+            .toISOString()
+            .replace(/Z$/, '+09:00'),
           requestId,
           method: methods.has(request.method) ? request.method : 'OTHER',
           route: routePattern(request, authentication),

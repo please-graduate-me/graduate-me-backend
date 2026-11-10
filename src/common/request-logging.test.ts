@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, Module } from '@nestjs/common';
 import { z } from 'zod';
 import { NestFactory } from '@nestjs/core';
@@ -163,7 +163,7 @@ describe('민감정보 없는 HTTP 요청 추적', () => {
     expect(log).toEqual({
       event: 'http_request',
       timestamp: expect.stringMatching(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+09:00$/
       ),
       requestId: response.requestId,
       method: 'POST',
@@ -179,6 +179,31 @@ describe('민감정보 없는 HTTP 요청 추적', () => {
       /user-secret|mail-secret|body-secret|token-secret|cookie-secret|192\.0\.2\.75|authorization|cookie|stack|\n/
     );
   });
+
+  it.each([
+    ['2026-11-10T00:00:00.123Z', '2026-11-10T09:00:00.123+09:00'],
+    ['2026-12-31T15:00:00.000Z', '2027-01-01T00:00:00.000+09:00'],
+    ['2028-02-29T23:59:59.999Z', '2028-03-01T08:59:59.999+09:00'],
+  ])(
+    '한국 시각 변환이 날짜 경계와 같은 시점을 보존한다: %s',
+    async (utc, expected) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(utc));
+
+      try {
+        await send('/api/resources/time-check', 'POST', '{}', {
+          'content-type': 'application/json',
+        });
+
+        const timestamp = JSON.parse(logs.at(-1)!).timestamp;
+
+        expect(timestamp).toBe(expected);
+        expect(Date.parse(timestamp)).toBe(Date.parse(utc));
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
 
   it('Nest·Zod·오류 코드·내부 500의 JSON과 로그에 같은 요청 ID를 연결한다', async () => {
     for (const [kind, status] of [
