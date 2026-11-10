@@ -406,12 +406,10 @@ export class CoursesService {
       (row.revealAfterSubmit &&
         submissions.some((s) => s.version === row.version));
 
-    const revisions: Record<string, unknown>[] = staff
-      ? await this.db.query(
-          'SELECT version,reason,"createdAt","actorId" FROM "CourseAssignmentRevision" WHERE "assignmentId"=$1 ORDER BY version DESC',
-          [id]
-        )
-      : [];
+    const revisions: Record<string, unknown>[] = await this.db.query(
+      `SELECT version,reason,"createdAt"${staff ? ',"actorId"' : ''} FROM "CourseAssignmentRevision" WHERE "assignmentId"=$1 ORDER BY version DESC`,
+      [id]
+    );
 
     return {
       ...row,
