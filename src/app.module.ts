@@ -1,3 +1,5 @@
+import { InsightsController } from './insights/insights.controller.js';
+import { InsightsService } from './insights/insights.service.js';
 import { ClovaProviderService } from './ai/clova-provider.service.js';
 import { AnthropicProviderService } from './ai/anthropic-provider.service.js';
 import { OcrController } from './ocr/ocr.controller.js';
@@ -56,6 +58,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    InsightsController,
     OcrController,
     AppController,
     DemoController,
@@ -74,6 +77,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    InsightsService,
     OcrService,
     OcrProviderService,
     ClovaOcrProviderService,
