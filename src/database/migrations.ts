@@ -1,3 +1,5 @@
+import { RecommendationEvents1800000001100 } from './migrations/1800000001100-recommendation-events.js';
+import { LearningExtensions1800000001000 } from './migrations/1800000001000-learning-extensions.js';
 import { MaterialRegistration1794223000600 } from './migrations/1794223000600-material-registration.js';
 import { AIMessageProvider1794223000500 } from './migrations/1794223000500-ai-message-provider.js';
 import { MaterialOcr1794223000300 } from './migrations/1794223000300-material-ocr.js';
@@ -39,4 +41,6 @@ export const migrations = [
   OcrProvider1794223000400,
   AIMessageProvider1794223000500,
   MaterialRegistration1794223000600,
+  LearningExtensions1800000001000,
+  RecommendationEvents1800000001100,
 ];
