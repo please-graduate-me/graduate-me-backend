@@ -26,6 +26,7 @@ import {
   reviewInputSchema,
   questionListQuerySchema,
   historyQuerySchema,
+  processingUsageQuerySchema,
   moderationInputSchema,
 } from './workspace-contracts.js';
 
@@ -154,8 +155,8 @@ export class WorkspaceController {
   }
   @Get('usage')
   @UseGuards(AdminGuard)
-  usage() {
-    return this.operations.usage();
+  usage(@Query() query: unknown) {
+    return this.operations.usage(processingUsageQuerySchema.parse(query));
   }
   @Get('community-reports')
   @UseGuards(AdminGuard)

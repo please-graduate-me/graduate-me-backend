@@ -18,6 +18,16 @@ export const historyQuerySchema = workspaceQuerySchema.extend({
   period: z.enum(['all', '7', '30']).default('all'),
 });
 
+/** 영상 준비 큐 검색과 집계는 같은 전체 조건을 사용한다. */
+export const processingUsageQuerySchema = historyQuerySchema.extend({
+  status: z
+    .enum(['all', 'queued', 'preparing', 'transcribing', 'ready', 'failed'])
+    .default('all'),
+});
+
+/** 큐 조회에는 실행 요청이나 재시도 명령을 포함하지 않는다. */
+export type ProcessingUsageQuery = z.infer<typeof processingUsageQuerySchema>;
+
 /** 이력 검색은 앱의 표시 조건과 서버 조회 조건을 함께 유지한다. */
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
 

@@ -7,6 +7,7 @@ import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { LearningQuestion } from '../database/entities/LearningQuestion.entity.js';
 import { Material } from '../database/entities/Material.entity.js';
 import { MaterialAccess } from '../database/entities/MaterialAccess.entity.js';
+import { Job } from '../database/entities/Job.entity.js';
 import { Video } from '../database/entities/Video.entity.js';
 import { CommunityService } from '../community/community.service.js';
 import { ReviewEvent } from '../database/entities/ReviewEvent.entity.js';
@@ -20,6 +21,7 @@ import { WorkspaceQuestionsService } from './workspace-questions.service.js';
 import {
   questionListQuerySchema,
   historyQuerySchema,
+  processingUsageQuerySchema,
 } from './workspace-contracts.js';
 
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -247,6 +249,84 @@ describe.skipIf(!testUrl)('관리 질문 목록의 전체 범위 필터와 권�
       expect(row).not.toHaveProperty('content');
       expect(row).not.toHaveProperty('pages');
       expect(row).not.toHaveProperty('memo');
+    }
+  });
+
+  it('100개 이후 큐 이력도 검색·페이지·필터 전체 집계에 포함하고 상태·기간을 서버에서 적용한다', async () => {
+    const prefix = `큐검수-${randomUUID()}`;
+    const videoIds = Array.from({ length: 103 }, () => randomUUID());
+
+    await db.manager.insert(
+      Video,
+      videoIds.map((id, index) => ({
+        id,
+        ownerId: owner,
+        title: `${prefix}${index === 102 ? '-과거%문자' : ''}`,
+        youtubeId: id,
+        visibility: 'private' as const,
+      }))
+    );
+
+    try {
+      await db.manager.insert(
+        Job,
+        videoIds.map((id, index) => ({
+          videoId: id,
+          status: index >= 101 ? 'failed' : index === 100 ? 'ready' : 'queued',
+          createdAt: new Date(
+            Date.now() - (index === 102 ? 40 * 86_400_000 : index * 1000)
+          ),
+          updatedAt: new Date(Date.now() - index * 1000),
+        }))
+      );
+
+      const last = await operations.usage(
+        processingUsageQuerySchema.parse({ q: prefix, page: 6, limit: 20 })
+      );
+
+      expect(last.total).toBe(103);
+      expect(last.items).toHaveLength(3);
+      expect(last.hasMore).toBe(false);
+
+      expect(last.summary).toEqual({
+        total: 103,
+        completed: 1,
+        failed: 2,
+        processing: 100,
+      });
+
+      const failed = await operations.usage(
+        processingUsageQuerySchema.parse({
+          q: prefix,
+          status: 'failed',
+          period: '7',
+          limit: 1,
+        })
+      );
+
+      expect(failed.total).toBe(1);
+
+      expect(failed.summary).toEqual({
+        total: 1,
+        completed: 0,
+        failed: 1,
+        processing: 0,
+      });
+
+      const old = await operations.usage(
+        processingUsageQuerySchema.parse({ q: `${prefix}-과거%문자` })
+      );
+
+      expect(old.total).toBe(1);
+      expect(old.items[0].videoId).toBe(videoIds[102]);
+
+      const byId = await operations.usage(
+        processingUsageQuerySchema.parse({ q: old.items[0].id })
+      );
+
+      expect(byId.total).toBe(1);
+    } finally {
+      await db.manager.delete(Video, { id: In(videoIds) });
     }
   });
 

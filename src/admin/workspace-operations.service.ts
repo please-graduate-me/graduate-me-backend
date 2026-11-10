@@ -14,6 +14,7 @@ import { HttpError } from '../common/http-error.js';
 import type {
   helperInputSchema,
   HistoryQuery,
+  ProcessingUsageQuery,
   moderationInputSchema,
 } from './workspace-contracts.js';
 
@@ -166,34 +167,52 @@ export class WorkspaceOperationsService {
 
     return this.helperDetail(row);
   }
-  async usage() {
-    const jobs = await this.db.manager.find(Job, {
-      order: { updatedAt: 'DESC' },
-      take: 100,
-    });
+  async usage(query?: ProcessingUsageQuery) {
+    const {
+      page = 1,
+      limit = 100,
+      status = 'all',
+      period = 'all',
+      q = '',
+    } = query ?? {};
 
-    const videos = new Map(
-      (jobs.length
-        ? await this.db.manager.findBy(Video, {
-            id: In(jobs.map((j) => j.videoId)),
-          })
-        : []
-      ).map((v) => [v.id, v])
-    );
+    // 목록과 요약에 같은 조건을 적용해 오래된 작업도 검색·집계에서 빠지지 않게 한다.
+    const join = `FROM "Job" j LEFT JOIN "Video" v ON v.id=j."videoId"`;
+    const where = `WHERE ($1='all' OR j.status=$1) AND (j.id ILIKE $2 OR v.title ILIKE $2) AND ($3::timestamp IS NULL OR j."createdAt">=$3::timestamp)`;
+
+    const parameters = [
+      status,
+      containsPattern(q),
+      period === 'all'
+        ? null
+        : new Date(Date.now() - Number(period) * 86_400_000),
+    ];
+
+    const [items, summaries] = await Promise.all([
+      this.db.query(
+        `SELECT j.id,j."videoId",COALESCE(v.title,'삭제된 영상') AS title,j.status,j.attempts,j."errorMessage",j."createdAt",j."updatedAt",'unavailable' AS "costKind",NULL AS cost ${join} ${where} ORDER BY j."updatedAt" DESC,j.id OFFSET $4 LIMIT $5`,
+        [...parameters, (page - 1) * limit, limit]
+      ),
+      this.db.query(
+        `SELECT count(*)::int AS total,count(*) FILTER (WHERE j.status='ready')::int AS completed,count(*) FILTER (WHERE j.status='failed')::int AS failed,count(*) FILTER (WHERE j.status NOT IN ('ready','failed'))::int AS processing ${join} ${where}`,
+        parameters
+      ),
+    ]);
+
+    const summary = summaries[0] as {
+      total: number;
+      completed: number;
+      failed: number;
+      processing: number;
+    };
 
     return {
-      items: jobs.map((j) => ({
-        id: j.id,
-        videoId: j.videoId,
-        title: videos.get(j.videoId)?.title ?? '삭제된 영상',
-        status: j.status,
-        attempts: j.attempts,
-        errorMessage: j.errorMessage,
-        createdAt: j.createdAt,
-        updatedAt: j.updatedAt,
-        costKind: 'unavailable' as const,
-        cost: null,
-      })),
+      items,
+      summary,
+      page,
+      limit,
+      total: summary.total,
+      hasMore: page * limit < summary.total,
     };
   }
   async communityReports(query: HistoryQuery) {

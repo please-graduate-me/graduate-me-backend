@@ -18,6 +18,7 @@ import { ContentService } from './content.service.js';
 import { UsageService } from '../ai/usage.service.js';
 import {
   contentReviewSchema,
+  usageQuerySchema,
   revisionInputSchema,
   visibilityInputSchema,
 } from '../ai/contracts.js';
@@ -98,7 +99,7 @@ export class ContentController {
       querySchema.parse(q).questionId
     );
   }
-  @Get('ai-usage') @UseGuards(AdminGuard) usageReport() {
-    return this.usage.report();
+  @Get('ai-usage') @UseGuards(AdminGuard) usageReport(@Query() query: unknown) {
+    return this.usage.report(usageQuerySchema.parse(query));
   }
 }
