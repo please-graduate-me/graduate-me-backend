@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { AuthService } from './auth/auth.service.js';
 import { normalizeAuthOrigin } from './auth/request-origin.js';
+import { createRequestLogger } from './common/request-logging.js';
 import { ApiExceptionFilter } from './common/api-exception.filter.js';
 
 async function bootstrap() {
@@ -15,6 +16,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.set('trust proxy', true);
   app.disable('x-powered-by');
+  // 인증·본문 파싱 이전 오류도 동일한 요청 ID로 찾을 수 있게 한다.
+  app.use(createRequestLogger());
   app.use(normalizeAuthOrigin);
 
   // PDF 원본의 base64 전송만 큰 본문을 허용해 일반 변경 요청의 크기와 분리한다.
