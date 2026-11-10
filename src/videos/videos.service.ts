@@ -37,6 +37,7 @@ export class VideosService {
       .leftJoin('v.job', 'j')
       .select('p.videoId', 'videoId')
       .addSelect('v.title', 'title')
+      .addSelect('v.youtubeId', 'youtubeId')
       .addSelect('v.category', 'category')
       .addSelect('v.language', 'language')
       .addSelect('p.currentIndex', 'currentIndex')
@@ -67,6 +68,7 @@ export class VideosService {
       .getRawMany<{
         videoId: string;
         title: string;
+        youtubeId: string;
         category: string | null;
         language: 'en' | 'th';
         currentIndex: number;
