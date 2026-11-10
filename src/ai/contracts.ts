@@ -98,6 +98,8 @@ export const practiceGenerateSchema = z
     language: languageSchema,
     type: z.enum(['choice', 'short_answer', 'free_response']).default('choice'),
     count: z.number().int().min(1).max(5).default(3),
+    style: z.enum(['application', 'flex']).optional(),
+    skill: z.enum(['reading', 'listening']).optional(),
     explanationId: z.uuid().optional(),
   })
   .refine(

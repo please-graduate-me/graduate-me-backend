@@ -386,10 +386,21 @@ describe.skipIf(!testUrl)(
           requestId: randomUUID(),
           language: 'en',
           count: 1,
+          style: 'flex',
+          skill: 'reading',
         })
       );
 
       const item = result.items[0];
+
+      expect(item.payload).toMatchObject({
+        practiceStyle: 'flex',
+        skill: 'reading',
+      });
+
+      expect(generated.mock.calls.at(-1)?.[0].messages[0].content).toContain(
+        'FLEX형'
+      );
 
       expect(item.payload).not.toHaveProperty('answer');
       expect(item.payload).not.toHaveProperty('explanation');
