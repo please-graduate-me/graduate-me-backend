@@ -12,6 +12,14 @@ export const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reset') }),
   z.object({ action: z.literal('viewScript') }),
   z.object({
+    action: z.literal('watchPosition'),
+    position: z.number().finite().nonnegative(),
+    watchMode: z.enum(['dictation', 'script']),
+    watchVersion: z.string().regex(/^[a-f0-9]{64}$/),
+    expectedRevision: z.number().int().min(0).max(2147483646),
+    requestId: z.uuid(),
+  }),
+  z.object({
     action: z.literal('blankRatio'),
     ratio: z.union([z.literal(20), z.literal(40), z.literal(60)]),
   }),

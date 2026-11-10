@@ -1,3 +1,5 @@
+import { VideoPlayback } from '../database/entities/VideoPlayback.entity.js';
+import { playbackDto, playbackSnapshot } from './playback.js';
 import { materialPolicy } from '../learning/material-policy.js';
 import { DataSource, MoreThanOrEqual } from 'typeorm';
 import { Video } from '../database/entities/Video.entity.js';
@@ -224,6 +226,13 @@ export class VideosService {
       this.db.manager.exists(VideoLike, { where: { userId, videoId } }),
     ]);
 
+    const watch = playbackSnapshot(video, segments, progress.cycle);
+
+    const playback = await this.db.manager.findOneBy(VideoPlayback, {
+      progressId: progress.id,
+      watchVersion: watch.watchVersion,
+    });
+
     const { autoReplay, replayDelay, replayCount, playbackRate } =
       progress.user;
 
@@ -263,6 +272,7 @@ export class VideosService {
           }
         : null,
       progress: {
+        ...playbackDto(playback, watch.watchVersion),
         currentIndex: progress.currentIndex,
         mode:
           progress.mode === 'blank' && video.blankStatus !== 'ready'
@@ -443,6 +453,104 @@ export class VideosService {
         throw new HttpError(409, '영상 처리가 아직 완료되지 않았습니다.');
       const ratio = progress.blankRatio || 20;
       const language = video?.language ?? 'en';
+
+      if (input.action === 'watchPosition') {
+        const timeline = await tx.find(Segment, {
+          where: { videoId },
+          order: { index: 'ASC' },
+          select: { id: true, version: true, start: true, end: true },
+        });
+
+        const watch = playbackSnapshot(video, timeline, progress.cycle);
+
+        if (!timeline.length || input.watchVersion !== watch.watchVersion)
+          throw new HttpError(
+            409,
+            '원문 또는 학습 회차가 변경되었습니다. 재생 위치를 다시 확인해 주세요.'
+          );
+
+        const maximum =
+          video.duration ?? Math.max(...timeline.map((segment) => segment.end));
+
+        if (
+          !Number.isFinite(maximum) ||
+          maximum <= 0 ||
+          input.position > maximum
+        )
+          throw new HttpError(400, '영상 재생 시간 범위를 확인해 주세요.');
+
+        const existing = await tx.findOneBy(VideoPlayback, {
+          progressId: progress.id,
+          watchVersion: watch.watchVersion,
+        });
+
+        if (existing?.lastRequestId === input.requestId) {
+          if (
+            existing.lastInput.position !== input.position ||
+            existing.lastInput.watchMode !== input.watchMode ||
+            existing.lastInput.expectedRevision !== input.expectedRevision
+          )
+            throw new HttpError(
+              409,
+              '이미 사용한 재생 위치 요청 식별자입니다.'
+            );
+
+          return { ok: true, ...playbackDto(existing, watch.watchVersion) };
+        }
+
+        // 같은 회차의 늦은 자동 저장이나 다른 기기의 저장이 새 탐색 위치를 덮어쓰지 않게 한다.
+        if ((existing?.revision ?? 0) !== input.expectedRevision)
+          throw new HttpError(
+            409,
+            '다른 재생 위치가 먼저 저장되었습니다. 저장된 위치를 다시 확인해 주세요.'
+          );
+
+        const position = Math.min(
+          maximum,
+          Math.round(input.position * 1000) / 1000
+        );
+
+        const saved = await tx.save(VideoPlayback, {
+          ...existing,
+          progressId: progress.id,
+          watchVersion: watch.watchVersion,
+          analysisVersion: video.analysisVersion,
+          sourceSnapshot: watch.snapshot,
+          cycle: progress.cycle,
+          revision: (existing?.revision ?? 0) + 1,
+          lastRequestId: input.requestId,
+          lastInput: input,
+          playbackPosition:
+            input.watchMode === 'dictation'
+              ? position
+              : (existing?.playbackPosition ?? 0),
+          scriptPosition:
+            input.watchMode === 'script'
+              ? position
+              : (existing?.scriptPosition ?? 0),
+          scriptMaxPosition:
+            input.watchMode === 'script'
+              ? Math.max(existing?.scriptMaxPosition ?? 0, position)
+              : (existing?.scriptMaxPosition ?? 0),
+        });
+
+        if (input.watchMode === 'script') {
+          // 스크립트 시청은 도움 열람만 표시하며 정답 상태나 활성 받아쓰기 구절은 바꾸지 않는다.
+          await tx.update(
+            Progress,
+            { id: progress.id },
+            { scriptViewed: true }
+          );
+
+          await tx.update(
+            SegmentState,
+            { progressId: progress.id },
+            { revealed: true }
+          );
+        }
+
+        return { ok: true, ...playbackDto(saved, watch.watchVersion) };
+      }
 
       if (input.action === 'reset') {
         // 공유 영상은 보존하고 잠근 사용자 진도에 속한 두 모드의 기록만 지운다.

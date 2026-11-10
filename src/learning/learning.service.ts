@@ -80,6 +80,7 @@ export class LearningService {
       annotations,
       explanations,
       conversations,
+      playback,
     ] = await Promise.all([
       this.personalMaterials(userId),
       this.questions.list(userId),
@@ -118,6 +119,26 @@ export class LearningService {
         order: { updatedAt: 'DESC' },
         take: 100,
       }),
+      this.db.query<
+        {
+          id: string;
+          videoId: string;
+          title: string;
+          language: 'en' | 'th';
+          mode: string;
+          position: number;
+          maximum: number;
+          updatedAt: Date;
+          cycle: number;
+          analysisVersion: string;
+        }[]
+      >(
+        `SELECT w."progressId" || ':' || w."watchVersion" AS id,p."videoId",v.title,v.language,
+        w."lastInput"->>'watchMode' AS mode,CASE WHEN w."lastInput"->>'watchMode'='script' THEN w."scriptPosition" ELSE w."playbackPosition" END AS position,
+        w."scriptMaxPosition" AS maximum,w."updatedAt",w.cycle,w."analysisVersion" FROM "VideoPlayback" w
+        JOIN "Progress" p ON p.id=w."progressId" JOIN "Video" v ON v.id=p."videoId" WHERE p."userId"=$1 ORDER BY w."updatedAt" DESC LIMIT 100`,
+        [userId]
+      ),
     ]);
 
     // 기록별 집계 단위를 보존해 PDF 읽기와 영상 정답·자가점검을 같은 완료량으로 섞지 않는다.
@@ -192,6 +213,19 @@ export class LearningService {
         detail: `AI 설명 v${p.version}${p.needsReview ? ' · 확인 필요' : ''}`,
         createdAt: p.updatedAt,
         href: sourcePath(p.source),
+      })),
+      // 저장된 재생 시각은 정답률·완료량과 섞지 않고 독립적인 시청 활동으로 표시한다.
+      ...playback.map((p) => ({
+        id: `watch:${p.id}`,
+        kind: 'watch',
+        language: p.language,
+        title: p.title,
+        detail:
+          p.mode === 'script'
+            ? `스크립트 시청 위치 ${Math.floor(p.position)}초 · 최대 도달 ${Math.floor(p.maximum)}초 · 정답 진도와 별도`
+            : `받아쓰기 재생 위치 ${Math.floor(p.position)}초`,
+        createdAt: p.updatedAt,
+        href: `/learn/${encodeURIComponent(p.videoId)}`,
       })),
       ...conversations.map((p) => ({
         id: `conversation:${p.id}`,

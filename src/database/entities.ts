@@ -1,3 +1,4 @@
+import { VideoPlayback } from './entities/VideoPlayback.entity.js';
 import { MaterialRegistration } from './entities/MaterialRegistration.entity.js';
 import { MaterialOcrPage } from './entities/MaterialOcrPage.entity.js';
 import { User } from './entities/User.entity.js';
@@ -40,6 +41,7 @@ import { MaterialVersion } from './entities/MaterialVersion.entity.js';
 
 /** API와 마이그레이션이 동일한 엔티티 메타데이터를 사용한다. */
 export const entities = [
+  VideoPlayback,
   MaterialRegistration,
   MaterialOcrPage,
   User,
