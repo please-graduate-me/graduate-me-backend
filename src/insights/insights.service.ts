@@ -1,3 +1,4 @@
+import { PersonalizationService } from './personalization.service.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { User } from '../database/entities/User.entity.js';
@@ -45,7 +46,11 @@ function errorCategory(row: Evidence, language: string) {
 /** 실제 제출 근거만 집계하며 검증되지 않은 능력 진단이나 AI 요약으로 표시하지 않는다. */
 @Injectable()
 export class InsightsService {
-  constructor(@Inject(DataSource) private readonly db: DataSource) {}
+  constructor(
+    @Inject(DataSource) private readonly db: DataSource,
+    @Inject(PersonalizationService)
+    private readonly personalization?: PersonalizationService
+  ) {}
   async report(userId: string, language: 'en' | 'th', days: number) {
     const since = new Date(Date.now() - days * 86400000);
 
@@ -161,6 +166,67 @@ export class InsightsService {
     };
   }
   async recommendations(userId: string, language: 'en' | 'th') {
+    const base = await this.recommendationCandidates(userId, language);
+
+    const stored = await this.personalization?.latest(
+      userId,
+      language,
+      base.items
+    );
+
+    const recommendations = stored?.analysis.recommendations ?? [];
+
+    const priority = new Map(
+      recommendations.map((r, index) => [r.videoId, index])
+    );
+
+    const items = base.items
+      .map((item) => ({
+        ...item,
+        sampleText: undefined,
+        reason:
+          recommendations.find((r) => r.videoId === item.id)?.reason ??
+          item.reason,
+      }))
+      .sort((a, b) => (priority.get(a.id) ?? 100) - (priority.get(b.id) ?? 100))
+      .slice(0, 12);
+
+    return {
+      ...base,
+      items,
+      personalization: stored
+        ? {
+            summary: stored.analysis.summary.text,
+            focusAreas: stored.analysis.focusAreas.map((f) => f.text),
+            generatedAt: stored.generatedAt,
+            evidenceCount: stored.evidenceCount,
+            provider: stored.provider,
+            model: stored.model,
+          }
+        : null,
+      basis: stored
+        ? '최근 30일의 학습 기록과 준비 영상 발췌에 근거한 AI 추천입니다. 능력 진단이나 시험 수준 인증이 아닙니다.'
+        : base.basis,
+    };
+  }
+  async personalize(userId: string, language: 'en' | 'th', requestId: string) {
+    if (!this.personalization)
+      throw new HttpError(503, '개인화 설정이 필요합니다.');
+    const base = await this.recommendationCandidates(userId, language);
+
+    await this.personalization.generate(
+      userId,
+      language,
+      requestId,
+      base.items
+    );
+
+    return this.recommendations(userId, language);
+  }
+  private async recommendationCandidates(
+    userId: string,
+    language: 'en' | 'th'
+  ) {
     const user = await this.db.manager.findOneBy(User, { id: userId });
 
     if (!user) throw new HttpError(401, '로그인이 필요합니다.');
@@ -172,9 +238,11 @@ export class InsightsService {
       duration: number | null;
       category: string | null;
       averageLength: number | null;
+      sampleText: string;
       completed: boolean;
     }[] = await this.db.query(
       `SELECT v.id,v."youtubeId",v.title,v.duration,v.category,
+      COALESCE((SELECT string_agg(snippet.text, E'\\n' ORDER BY snippet.index) FROM (SELECT left(s.text,300) AS text,s.index FROM "Segment" s WHERE s."videoId"=v.id ORDER BY s.index LIMIT 3) snippet),'') AS "sampleText",
       (SELECT avg(length(s.text)) FROM "Segment" s WHERE s."videoId"=v.id) AS "averageLength",
       COALESCE((SELECT count(DISTINCT st."segmentId") FROM "SegmentState" st JOIN "Progress" p ON p.id=st."progressId" JOIN "Segment" s ON s.id=st."segmentId" WHERE p."userId"=$1 AND p."videoId"=v.id AND st.status='correct' AND st."sourceVersion"=s.version),0) >= (SELECT count(*) FROM "Segment" s WHERE s."videoId"=v.id) AS completed
       FROM "Video" v JOIN "Job" j ON j."videoId"=v.id AND j.status='ready' WHERE v.language=$2
@@ -235,7 +303,7 @@ export class InsightsService {
         };
       })
       .sort((a, b) => b.score - a.score)
-      .slice(0, 12);
+      .slice(0, 24);
 
     return {
       language,

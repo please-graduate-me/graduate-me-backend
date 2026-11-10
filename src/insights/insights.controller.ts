@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import {
+  personalizationInputSchema,
   recommendationEventSchema,
   insightQuerySchema,
   recommendationFeedbackSchema,
@@ -37,6 +38,13 @@ export class InsightsController {
       r.userId,
       insightQuerySchema.parse(query).language
     );
+  }
+  @Post('recommendations/personalize')
+  @HttpCode(200)
+  personalize(@Req() r: UserRequest, @Body() body: unknown) {
+    const input = personalizationInputSchema.parse(body);
+
+    return this.insights.personalize(r.userId, input.language, input.requestId);
   }
   @Post('recommendations/:id/events')
   @HttpCode(200)

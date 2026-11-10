@@ -16,3 +16,9 @@ export const recommendationEventSchema = z.object({
   requestId: z.uuid(),
   action: z.enum(['shown', 'selected']),
 });
+
+/** AI 개인화는 조회와 분리된 명시적 요청으로만 생성한다. */
+export const personalizationInputSchema = z.object({
+  language: z.enum(['en', 'th']),
+  requestId: z.uuid(),
+});

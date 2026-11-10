@@ -1,3 +1,5 @@
+import { LearningHistoryService } from './ai/learning-history.service.js';
+import { PersonalizationService } from './insights/personalization.service.js';
 import { CommunityController } from './community/community.controller.js';
 import { CommunityService } from './community/community.service.js';
 import { CoursesController } from './courses/courses.controller.js';
@@ -84,6 +86,8 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    LearningHistoryService,
+    PersonalizationService,
     CommunityService,
     CoursesService,
     InsightsService,
