@@ -97,6 +97,7 @@ export class ConversationService {
       .createQueryBuilder('c')
       .where('c.ownerId=:ownerId', { ownerId });
 
+    // 같은 자료라도 원본·OCR 버전이 다른 개인 대화를 현재 선택에 섞지 않는다.
     for (const key of ['materialId', 'videoId', 'segmentId'] as const)
       if (query[key])
         b.andWhere(`c.source->>'${key}'=:${key}`, { [key]: query[key] });
@@ -153,6 +154,7 @@ export class ConversationService {
         });
 
         try {
+          // 무관한 질문은 범위 판별까지만 실행하고 본문 답변의 생성과 비용을 중단한다.
           const relevance = await this.ai.generate(
             ownerId,
             'question_scope',

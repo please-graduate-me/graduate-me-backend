@@ -166,6 +166,7 @@ export class ClovaOcrProviderService {
       throw new HttpError(503, 'CLOVA OCR 호출 주소 설정을 확인해 주세요.');
     }
 
+    // 설정 오류로 OCR 비밀 헤더가 외부 주소에 전송되지 않게 공식 호스트와 경로를 제한한다.
     if (
       url.protocol !== 'https:' ||
       !/^[a-zA-Z0-9-]+\.apigw\.(?:ntruss|gov-ntruss)\.com$/.test(

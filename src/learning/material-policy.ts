@@ -77,6 +77,7 @@ export function assessLearningText(text: string, language: 'en' | 'th') {
   let letters = 0;
   let targetLetters = 0;
   const minimum = materialPolicy().suitability.minTargetLetters;
+  // 문자 체계의 단서만 검사하며 정밀 언어 판별이나 내용 안전성 심사로 취급하지 않는다.
   const target = language === 'th' ? /\p{Script=Thai}/u : /\p{Script=Latin}/u;
 
   for (const letter of text.normalize('NFKC')) {

@@ -196,6 +196,7 @@ export class VideoPreparationService {
 
         await recordUsage(response);
 
+        // 항목 수가 같아도 구절 인덱스가 중복·누락되면 번역을 다른 원문에 저장하지 않는다.
         const parsed = translation
           ? translationSchema.parse(JSON.parse(response.text))
           : candidatesSchema.parse(JSON.parse(response.text));
@@ -236,6 +237,7 @@ export class VideoPreparationService {
     );
 
     await this.db.transaction(async (tx) => {
+      // 생성 중 운영자가 원문을 수정했다면 오래된 결과를 새 버전 위에 덮어쓰지 않는다.
       const current = await tx.find(Segment, {
         where: { id: In(segments.map((s) => s.id)) },
       });

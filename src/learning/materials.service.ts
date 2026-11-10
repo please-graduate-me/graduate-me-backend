@@ -110,6 +110,7 @@ export class MaterialsService {
     return material;
   }
   async list(userId: string) {
+    // 공유 자료의 읽기 위치가 소유자의 기록을 따라가거나 다른 학생에게 노출되지 않게 한다.
     const builder = this.db
       .getRepository(Material)
       .createQueryBuilder('m')

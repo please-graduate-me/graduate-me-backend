@@ -220,6 +220,7 @@ export class PracticeService {
         const rows = await this.db.transaction(async (tx) => {
           const rows: LearningArtifact[] = [];
 
+          // 여러 표현으로 출제해도 각 문항의 근거가 첫 번째 표현의 출처로 바뀌지 않게 한다.
           for (const payload of generated.value.questions)
             rows.push(
               await this.artifacts.create(tx, {

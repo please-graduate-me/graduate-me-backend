@@ -130,6 +130,7 @@ export class LearningAIService {
           recordUsage
         );
 
+        // 정형 출력이 잘못되어도 이미 소비한 실측 토큰은 출력 검증 전에 보존한다.
         await recordUsage(raw);
 
         let parsed: unknown;

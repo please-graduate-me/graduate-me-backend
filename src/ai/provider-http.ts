@@ -9,6 +9,7 @@ export async function readProviderJson(response: Response): Promise<unknown> {
   const chunks: Uint8Array[] = [];
   let size = 0;
 
+  // 전체 JSON을 메모리에 올리기 전에 크기를 제한해 비정상 공급자 응답을 차단한다.
   try {
     while (true) {
       const chunk = await reader.read();

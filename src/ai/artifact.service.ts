@@ -183,6 +183,7 @@ export class ArtifactService {
       .createQueryBuilder('a')
       .where('a.ownerId=:ownerId AND a.kind=:kind', { ownerId, kind });
 
+    // 원본·OCR 버전이 다른 결과를 현재 선택의 설명이나 연습으로 섞어 반환하지 않는다.
     for (const key of [
       'materialId',
       'videoId',

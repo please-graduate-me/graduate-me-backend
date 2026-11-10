@@ -19,6 +19,7 @@ export function parseYouTubeUrl(input: string): string {
 
   if (url.searchParams.has('list'))
     throw new Error('재생목록 대신 개별 영상 URL을 입력해 주세요.');
+  // 호스트 부분 일치나 자격증명 URL로 다른 사이트가 YouTube로 오인되지 않게 한다.
   const host = url.hostname.toLowerCase();
   let id: string | null = null;
 

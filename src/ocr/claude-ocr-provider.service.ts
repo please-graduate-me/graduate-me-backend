@@ -114,6 +114,7 @@ export class ClaudeOcrProviderService {
         'Claude 인식 영역과 페이지 크기를 확인할 수 없습니다.'
       );
 
+    // 모델이 보정된 신뢰도 숫자를 만들지 않게 미제공으로 두고 실제 페이지 영역만 검증한다.
     const fields = parsed.data.fields.map((field) => {
       const { x, y, width, height } = field.rect;
 

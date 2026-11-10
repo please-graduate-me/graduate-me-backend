@@ -35,6 +35,7 @@ export async function extractOcrPage(content: Buffer, pageNumber: number) {
       crop.y + crop.height > media.y + media.height
     )
       throw new Error('지원하지 않는 PDF 영역');
+    // 회전과 CropBox를 새 한 페이지에 고정해 인식 좌표가 표시된 원본 영역과 어긋나지 않게 한다.
     const width = angle % 180 ? crop.height : crop.width;
     const height = angle % 180 ? crop.width : crop.height;
     const output = await PDFDocument.create();
