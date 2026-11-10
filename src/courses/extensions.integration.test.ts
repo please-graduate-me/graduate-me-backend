@@ -3,6 +3,7 @@ import { PDFDocument } from 'pdf-lib';
 import { ExpressionsService } from '../learning/expressions.service.js';
 import { Expression } from '../database/entities/Expression.entity.js';
 import { PracticeAttempt } from '../database/entities/PracticeAttempt.entity.js';
+import { ProfileService } from '../users/profile.service.js';
 import { MaterialsService } from '../learning/materials.service.js';
 import { MaterialAccess } from '../database/entities/MaterialAccess.entity.js';
 import { DataSource, In } from 'typeorm';
@@ -354,9 +355,15 @@ describe.skipIf(!testUrl)('확장 학습의 실제 기록·수업·공개 권한
       { visibility: 'private', ownerId: teacher }
     );
 
-    await expect(
-      courses.getAssignment(student, courseId, assignmentId)
-    ).rejects.toMatchObject({ status: 404 });
+    const revoked = await courses.getAssignment(
+      student,
+      courseId,
+      assignmentId
+    );
+
+    expect(revoked.sourceAvailable).toBe(false);
+    expect(revoked.source.tasks).toEqual([]);
+    expect(revoked.submissions).toHaveLength(2);
 
     await db.manager.update(Video, { id: videoId }, { visibility: 'public' });
   });
@@ -387,9 +394,9 @@ describe.skipIf(!testUrl)('확장 학습의 실제 기록·수업·공개 권한
       })
     );
 
-    await expect(
-      courses.getAssignment(student, courseId, assignment.id)
-    ).rejects.toMatchObject({ status: 404 });
+    expect(
+      await courses.getAssignment(student, courseId, assignment.id)
+    ).toMatchObject({ sourceAvailable: false, source: { tasks: [] } });
 
     await db.manager.update(
       MaterialAccess,
@@ -647,5 +654,93 @@ describe.skipIf(!testUrl)('확장 학습의 실제 기록·수업·공개 권한
     ).not.toContain(videoId);
 
     expect((await insights.recommendations(student, 'th')).items).toEqual([]);
+  });
+
+  it('교사 탈퇴 후에도 수업·다른 학생 제출·당시 버전은 남고 새 초대 가입은 중지한다', async () => {
+    const departed = randomUUID();
+
+    await db.manager.insert(User, { id: departed });
+
+    const course = await courses.create(departed, {
+      title: '개설자 탈퇴 보존 검증',
+      language: 'en',
+    });
+
+    const before = await courses.detail(departed, course.id);
+
+    await courses.join(student, String(before.course.inviteCode));
+    const pdf = await PDFDocument.create();
+
+    pdf.addPage([600, 800]);
+
+    const material = await new MaterialsService(db).create(departed, {
+      title: '탈퇴 계정 읽기 자료',
+      language: 'en',
+      filename: 'source.pdf',
+      pages: ['Read this historical source.'],
+      contentBase64: Buffer.from(await pdf.save()).toString('base64'),
+    });
+
+    await db.manager.update(
+      MaterialAccess,
+      { id: material.id },
+      { visibility: 'accounts', allowedUserIds: [student] }
+    );
+
+    const assignment = await courses.assign(
+      departed,
+      course.id,
+      assignmentInputSchema.parse({
+        ...input(),
+        videoId: undefined,
+        materialId: material.id,
+        mode: 'reading',
+        revealAfterSubmit: true,
+      })
+    );
+
+    const saved = await courses.submit(student, course.id, assignment.id, {
+      requestId: randomUUID(),
+      version: 1,
+      answers: [{ id: '1', answer: '보존할 개인 제출' }],
+    });
+
+    await new ProfileService(db).remove(departed);
+
+    expect((await courses.detail(student, course.id)).course).toMatchObject({
+      ownerUnavailable: true,
+    });
+
+    expect(
+      (await courses.list(student)).items.some((item) => item.id === course.id)
+    ).toBe(true);
+
+    const preserved = await courses.getAssignment(
+      student,
+      course.id,
+      assignment.id
+    );
+
+    expect(preserved).toMatchObject({
+      sourceAvailable: false,
+      source: { tasks: [] },
+      submissions: [
+        { id: saved.id, answers: [{ answer: '보존할 개인 제출' }], version: 1 },
+      ],
+    });
+
+    expect(preserved.revisions).toHaveLength(1);
+
+    await expect(
+      courses.join(outsider, String(before.course.inviteCode))
+    ).rejects.toMatchObject({ status: 404 });
+
+    await expect(
+      courses.submit(student, course.id, assignment.id, {
+        requestId: randomUUID(),
+        version: 1,
+        answers: [{ id: '1', answer: '새 제출' }],
+      })
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

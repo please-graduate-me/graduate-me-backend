@@ -77,7 +77,7 @@ export class CoursesService {
   }
   async list(userId: string) {
     const items: Record<string, unknown>[] = await this.db.query(
-      `SELECT c.id,c.title,c.language,c."createdAt",m.role FROM "Course" c JOIN "CourseMember" m ON m."courseId"=c.id WHERE m."userId"=$1 ORDER BY c."createdAt" DESC`,
+      `SELECT c.id,c.title,c.language,c."createdAt",m.role,(c."ownerId" IS NULL) AS "ownerUnavailable" FROM "Course" c JOIN "CourseMember" m ON m."courseId"=c.id WHERE m."userId"=$1 ORDER BY c."createdAt" DESC`,
       [userId]
     );
 
@@ -100,7 +100,7 @@ export class CoursesService {
   }
   async join(userId: string, inviteCode: string) {
     const rows: { id: string }[] = await this.db.query(
-      'SELECT id FROM "Course" WHERE "inviteCode"=$1',
+      'SELECT id FROM "Course" WHERE "inviteCode"=$1 AND "ownerId" IS NOT NULL',
       [inviteCode]
     );
 
@@ -122,8 +122,9 @@ export class CoursesService {
       language: 'en' | 'th';
       createdAt: Date;
       inviteCode?: string;
+      ownerUnavailable: boolean;
     }[] = await this.db.query(
-      `SELECT id,title,language,"createdAt"${access.role !== 'student' ? ',"inviteCode"' : ''} FROM "Course" WHERE id=$1`,
+      `SELECT id,title,language,"createdAt",("ownerId" IS NULL) AS "ownerUnavailable"${access.role !== 'student' ? ',"inviteCode"' : ''} FROM "Course" WHERE id=$1`,
       [id]
     );
 
@@ -194,7 +195,7 @@ export class CoursesService {
         '수업 개설자만 다른 구성원을 제외할 수 있습니다.'
       );
 
-    const rows: { ownerId: string }[] = await this.db.query(
+    const rows: { ownerId: string | null }[] = await this.db.query(
       'SELECT "ownerId" FROM "Course" WHERE id=$1',
       [courseId]
     );
@@ -394,7 +395,17 @@ export class CoursesService {
   async getAssignment(userId: string, courseId: string, id: string) {
     const { access, row } = await this.assignment(userId, courseId, id);
 
-    await this.originalAccess(userId, row);
+    // 원본 철회·삭제는 새 학습만 막고 이미 제출한 본인의 답안 기록을 삭제하거나 숨기지 않는다.
+    let sourceAvailable = true;
+
+    try {
+      await this.originalAccess(userId, row);
+    } catch (error) {
+      if (error instanceof HttpError && [403, 404].includes(error.getStatus()))
+        sourceAvailable = false;
+      else throw error;
+    }
+
     const staff = access.role !== 'student';
 
     const submissions: Record<string, unknown>[] = await this.db.query(
@@ -415,27 +426,37 @@ export class CoursesService {
 
     return {
       ...row,
+      sourceAvailable,
       source: {
         ...row.source,
-        tasks: row.source.tasks.map((task) => ({
-          ...task,
-          text: reveal || row.mode === 'reading' ? task.text : null,
-          units:
-            row.mode === 'blank'
-              ? task.units.map((u, i) =>
-                  reveal || !task.blanks.includes(i) ? u : null
-                )
-              : [],
-        })),
+        tasks: sourceAvailable
+          ? row.source.tasks.map((task) => ({
+              ...task,
+              text: reveal || row.mode === 'reading' ? task.text : null,
+              units:
+                row.mode === 'blank'
+                  ? task.units.map((u, i) =>
+                      reveal || !task.blanks.includes(i) ? u : null
+                    )
+                  : [],
+            }))
+          : [],
       },
-      submissions: submissions.map((s) => this.submissionDto(s, staff)),
+      submissions: submissions.map((s) =>
+        this.submissionDto(s, staff, sourceAvailable)
+      ),
       revisions,
     };
   }
-  private submissionDto(row: Record<string, unknown>, staff: boolean) {
+  private submissionDto(
+    row: Record<string, unknown>,
+    staff: boolean,
+    sourceAvailable = true
+  ) {
     const snapshot = row.assignmentSnapshot as Assignment;
 
-    if (staff || snapshot.revealAfterSubmit) return row;
+    if ((staff && sourceAvailable) || (!staff && snapshot.revealAfterSubmit))
+      return row;
 
     // 제출 정책이 정답을 숨기면 당시 스냅샷과 정답을 함께 노출하지 않는다.
     return {

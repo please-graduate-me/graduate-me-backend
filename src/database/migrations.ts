@@ -1,3 +1,4 @@
+import { CourseOwnerPreservation1800000001400 } from './migrations/1800000001400-course-owner-preservation.js';
 import { VideoPlayback1800000001300 } from './migrations/1800000001300-video-playback.js';
 import { CommunityReports1800000001200 } from './migrations/1800000001200-community-reports.js';
 import { RecommendationEvents1800000001100 } from './migrations/1800000001100-recommendation-events.js';
@@ -47,4 +48,5 @@ export const migrations = [
   RecommendationEvents1800000001100,
   CommunityReports1800000001200,
   VideoPlayback1800000001300,
+  CourseOwnerPreservation1800000001400,
 ];
