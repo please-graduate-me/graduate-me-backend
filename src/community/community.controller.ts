@@ -15,6 +15,7 @@ import {
 import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
 import { CommunityService } from './community.service.js';
 import {
+  communityReportSchema,
   communityCommentSchema,
   communityPostSchema,
   communityQuerySchema,
@@ -77,6 +78,19 @@ export class CommunityController {
       r.userId,
       id,
       communityReactionSchema.parse(b).active
+    );
+  }
+  @Post('posts/:id/reports')
+  @HttpCode(200)
+  report(
+    @Req() r: UserRequest,
+    @Param('id') id: string,
+    @Body() body: unknown
+  ) {
+    return this.community.report(
+      r.userId,
+      id,
+      communityReportSchema.parse(body).reason
     );
   }
   @Post('follows/:id') @HttpCode(200) follow(

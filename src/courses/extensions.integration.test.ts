@@ -339,6 +339,15 @@ describe.skipIf(!testUrl)('확장 학습의 실제 기록·수업·공개 권한
     expect(detail.submissions).toHaveLength(2);
     expect(detail.revisions).toHaveLength(2);
 
+    const studentDetail = await courses.getAssignment(
+      student,
+      courseId,
+      assignmentId
+    );
+
+    expect(studentDetail.revisions).toHaveLength(2);
+    expect(studentDetail.revisions[0]).not.toHaveProperty('actorId');
+
     await db.manager.update(
       Video,
       { id: videoId },
@@ -466,6 +475,33 @@ describe.skipIf(!testUrl)('확장 학습의 실제 기록·수업·공개 권한
       status: 403,
     });
 
+    const report = await community.report(
+      student,
+      post.id,
+      '공개 내용 검토가 필요합니다.'
+    );
+
+    expect(await community.report(student, post.id, '중복 신고')).toEqual(
+      report
+    );
+
+    await db.query('UPDATE "CommunityPost" SET "hiddenAt"=now() WHERE id=$1', [
+      post.id,
+    ]);
+
+    await expect(community.get(student, post.id)).rejects.toMatchObject({
+      status: 404,
+    });
+
+    await expect(
+      community.comment(student, post.id, '숨김 후 댓글')
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(
+      (await community.list(student, communityQuerySchema.parse({}))).items
+    ).toHaveLength(0);
+
+    expect(await community.get(teacher, post.id)).toHaveProperty('hiddenAt');
     await community.remove(teacher, post.id);
 
     await expect(community.get(student, post.id)).rejects.toMatchObject({

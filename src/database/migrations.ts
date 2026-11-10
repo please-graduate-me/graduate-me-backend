@@ -1,3 +1,4 @@
+import { CommunityReports1800000001200 } from './migrations/1800000001200-community-reports.js';
 import { RecommendationEvents1800000001100 } from './migrations/1800000001100-recommendation-events.js';
 import { LearningExtensions1800000001000 } from './migrations/1800000001000-learning-extensions.js';
 import { MaterialRegistration1794223000600 } from './migrations/1794223000600-material-registration.js';
@@ -43,4 +44,5 @@ export const migrations = [
   MaterialRegistration1794223000600,
   LearningExtensions1800000001000,
   RecommendationEvents1800000001100,
+  CommunityReports1800000001200,
 ];

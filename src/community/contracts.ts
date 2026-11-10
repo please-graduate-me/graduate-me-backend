@@ -32,3 +32,8 @@ export const communityCommentSchema = z.object({
 
 /** 추천과 팔로우는 중복 생성 대신 원하는 상태로 수렴한다. */
 export const communityReactionSchema = z.object({ active: z.boolean() });
+
+/** 일반 게시물 신고는 학습 자료의 정답·설명 오류 신고와 분리한다. */
+export const communityReportSchema = z.object({
+  reason: z.string().trim().min(1).max(5000),
+});

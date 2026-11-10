@@ -18,6 +18,7 @@ type Post = {
   source: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
+  hiddenAt: Date | null;
 };
 
 @Injectable()
@@ -29,7 +30,7 @@ export class CommunityService {
   ) {}
   private async readable(userId: string, id: string) {
     const rows: Post[] = await this.db.query(
-      `SELECT * FROM "CommunityPost" WHERE id=$1 AND ("ownerId"=$2 OR visibility='public' OR "allowedUserIds" ? $2)`,
+      `SELECT * FROM "CommunityPost" WHERE id=$1 AND ("hiddenAt" IS NULL OR "ownerId"=$2) AND ("ownerId"=$2 OR visibility='public' OR "allowedUserIds" ? $2)`,
       [id, userId]
     );
 
@@ -63,7 +64,7 @@ export class CommunityService {
   }
   async list(userId: string, query: z.infer<typeof communityQuerySchema>) {
     const rows: Post[] = await this.db.query(
-      `SELECT p.* FROM "CommunityPost" p WHERE (p."ownerId"=$1 OR p.visibility='public' OR p."allowedUserIds" ? $1)
+      `SELECT p.* FROM "CommunityPost" p WHERE (p."hiddenAt" IS NULL OR p."ownerId"=$1) AND (p."ownerId"=$1 OR p.visibility='public' OR p."allowedUserIds" ? $1)
       AND ($2::text IS NULL OR p.language=$2) AND (p.title ILIKE $3 OR p.body ILIKE $3)
       AND (NOT $4::boolean OR EXISTS(SELECT 1 FROM "CommunityFollow" f WHERE f."followerId"=$1 AND f."followingId"=p."ownerId"))
       ORDER BY p."updatedAt" DESC,p.id LIMIT $5 OFFSET $6`,
@@ -202,6 +203,29 @@ export class CommunityService {
       );
 
     return { ok: true };
+  }
+  async report(userId: string, id: string, reason: string) {
+    await this.readable(userId, id);
+
+    return this.db.transaction(async (tx) => {
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `community-report:${userId}:${id}`,
+      ]);
+
+      const existing: { id: string }[] = await tx.query(
+        `SELECT id FROM "CommunityReport" WHERE "postId"=$1 AND "reporterId"=$2 AND status='open'`,
+        [id, userId]
+      );
+
+      if (existing[0]) return { id: existing[0].id };
+
+      const rows: { id: string }[] = await tx.query(
+        'INSERT INTO "CommunityReport"("postId","reporterId",reason) VALUES($1,$2,$3) RETURNING id',
+        [id, userId, reason]
+      );
+
+      return { id: rows[0].id };
+    });
   }
   async follow(userId: string, targetId: string, active: boolean) {
     if (userId === targetId)
