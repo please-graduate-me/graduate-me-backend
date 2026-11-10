@@ -1,3 +1,5 @@
+import { CoursesController } from './courses/courses.controller.js';
+import { CoursesService } from './courses/courses.service.js';
 import { InsightsController } from './insights/insights.controller.js';
 import { InsightsService } from './insights/insights.service.js';
 import { ClovaProviderService } from './ai/clova-provider.service.js';
@@ -58,6 +60,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    CoursesController,
     InsightsController,
     OcrController,
     AppController,
@@ -77,6 +80,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    CoursesService,
     InsightsService,
     OcrService,
     OcrProviderService,
