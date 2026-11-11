@@ -1,3 +1,5 @@
+import { AdminCredentials1800000001700 } from './migrations/1800000001700-admin-credentials.js';
+import { CommunityHelpersAdmin1800000001600 } from './migrations/1800000001600-community-helpers-admin.js';
 import { MaterialAnalysis1800000001500 } from './migrations/1800000001500-material-analysis.js';
 import { CourseOwnerPreservation1800000001400 } from './migrations/1800000001400-course-owner-preservation.js';
 import { VideoPlayback1800000001300 } from './migrations/1800000001300-video-playback.js';
@@ -51,4 +53,6 @@ export const migrations = [
   VideoPlayback1800000001300,
   CourseOwnerPreservation1800000001400,
   MaterialAnalysis1800000001500,
+  CommunityHelpersAdmin1800000001600,
+  AdminCredentials1800000001700,
 ];
