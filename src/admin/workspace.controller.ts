@@ -11,7 +11,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
+import { HttpError } from '../common/http-error.js';
+import type { UserRequest } from '../auth/auth.guard.js';
+import { AdminAuthGuard } from '../auth/admin-auth.guard.js';
 import { AdminGuard } from './admin.guard.js';
 import { WorkspaceGuard } from './workspace.guard.js';
 import { WorkspaceAccessService } from './workspace-access.service.js';
@@ -19,7 +21,6 @@ import { WorkspaceQuestionsService } from './workspace-questions.service.js';
 import { WorkspaceOperationsService } from './workspace-operations.service.js';
 import { messageInputSchema } from '../learning/contracts.js';
 import {
-  assignInputSchema,
   draftInputSchema,
   helperInputSchema,
   resolutionInputSchema,
@@ -32,7 +33,7 @@ import {
 
 /** 도우미 작업과 운영자 전용 관리를 서버 권한 경계로 분리한다. */
 @Controller('admin/workspace')
-@UseGuards(AuthGuard)
+@UseGuards(AdminAuthGuard)
 export class WorkspaceController {
   constructor(
     @Inject(WorkspaceAccessService)
@@ -64,11 +65,19 @@ export class WorkspaceController {
   @Post('questions/:id/answer')
   @HttpCode(200)
   @UseGuards(WorkspaceGuard)
-  answer(
+  async answer(
     @Req() r: UserRequest,
     @Param('id') id: string,
     @Body() body: unknown
   ) {
+    const question = await this.questions.detail(r.userId, id);
+
+    if (question.kind !== 'report')
+      throw new HttpError(
+        410,
+        '기존 개인 질문에는 새 답변을 게시하지 않습니다. 커뮤니티를 이용해 주세요.'
+      );
+
     return this.questions.answer(
       r.userId,
       id,
@@ -78,15 +87,10 @@ export class WorkspaceController {
   @Post('questions/:id/assign')
   @HttpCode(200)
   @UseGuards(AdminGuard)
-  assign(
-    @Req() r: UserRequest,
-    @Param('id') id: string,
-    @Body() body: unknown
-  ) {
-    return this.questions.assign(
-      r.userId,
-      id,
-      assignInputSchema.parse(body).assigneeId
+  assign() {
+    throw new HttpError(
+      410,
+      '개인 질문 배정은 중단되었습니다. 커뮤니티에서 조교를 태그해 주세요.'
     );
   }
   @Post('questions/:id/reviews')

@@ -9,7 +9,7 @@ import { PracticeAttempt } from '../database/entities/PracticeAttempt.entity.js'
 import { AdminService } from '../admin/admin.service.js';
 import { WorkspaceAccessService } from '../admin/workspace-access.service.js';
 import { WorkspaceQuestionsService } from '../admin/workspace-questions.service.js';
-import { WorkspaceOperationsService } from '../admin/workspace-operations.service.js';
+import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { MaterialsService } from './materials.service.js';
 import { SourceService } from './source.service.js';
 import { ExpressionsService } from './expressions.service.js';
@@ -27,7 +27,6 @@ describe.skipIf(!testUrl)('학생 질문과 admin 답변의 저장·권한 경�
   const access = new WorkspaceAccessService(db, new AdminService(db));
   const questions = new QuestionsService(db, sources, access);
   const workspace = new WorkspaceQuestionsService(db, access, questions);
-  const operations = new WorkspaceOperationsService(db, questions);
   const expressions = new ExpressionsService(db, sources);
 
   const owner = randomUUID(),
@@ -51,7 +50,12 @@ describe.skipIf(!testUrl)('학생 질문과 admin 답변의 저장·권한 경�
       { id: admin, email: adminEmail, name: '운영 관리자' },
     ]);
 
-    vi.stubEnv('ADMIN_EMAILS', adminEmail);
+    vi.stubEnv('ADMIN_LOGIN_ID', adminEmail);
+
+    await db.query(
+      'INSERT INTO "AdminOperator"(username,"userId") VALUES($1,$2)',
+      [adminEmail, admin]
+    );
 
     const pdf = await PDFDocument.create();
 
@@ -106,14 +110,18 @@ describe.skipIf(!testUrl)('학생 질문과 admin 답변의 저장·권한 경�
   });
 
   it('배정 질문만 도우미에게 표시하고 학생에게는 게시한 답변만 전달한다', async () => {
-    await operations.saveHelper(admin, {
-      email: helperEmail,
-      languages: ['en'],
-      materialIds: [materialId],
-      canReview: true,
-      canRequestEdit: true,
-      active: true,
-    });
+    await db.manager.upsert(
+      HelperProfile,
+      {
+        userId: helper,
+        languages: ['en'],
+        materialIds: [materialId],
+        canReview: true,
+        canRequestEdit: true,
+        active: true,
+      },
+      ['userId']
+    );
 
     const source = { kind: 'pdf' as const, materialId, page: 1, quote };
 
@@ -198,14 +206,18 @@ describe.skipIf(!testUrl)('학생 질문과 admin 답변의 저장·권한 경�
   });
 
   it('언어나 자료 권한을 회수하면 기존 배정 질문도 즉시 차단한다', async () => {
-    await operations.saveHelper(admin, {
-      email: helperEmail,
-      languages: ['th'],
-      materialIds: [materialId],
-      canReview: true,
-      canRequestEdit: false,
-      active: true,
-    });
+    await db.manager.upsert(
+      HelperProfile,
+      {
+        userId: helper,
+        languages: ['th'],
+        materialIds: [materialId],
+        canReview: true,
+        canRequestEdit: false,
+        active: true,
+      },
+      ['userId']
+    );
 
     expect(
       (await workspace.list(helper, { q: '', page: 1, limit: 100 })).items

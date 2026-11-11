@@ -23,7 +23,8 @@
     "dev:app": "nest start",
     "dev:down": "docker compose -f compose.yaml -f compose.dev.yaml down",
     "dev:logs": "docker compose logs --follow --tail=50",
-    "test:comments": "node --test tooling/export-jsdoc.test.mjs"
+    "test:comments": "node --test tooling/export-jsdoc.test.mjs",
+    "admin:password": "node tooling/admin-password.mjs"
   },
   "dependencies": {
     "@auth/core": "0.41.3",

@@ -19,6 +19,10 @@ import { ClovaOcrProviderService } from './ocr/clova-ocr-provider.service.js';
 import { ClaudeOcrProviderService } from './ocr/claude-ocr-provider.service.js';
 import { PdfRasterizerService } from './ocr/pdf-rasterizer.service.js';
 import { DemoController } from './videos/demo.controller.js';
+import { AdminAuthController } from './auth/admin-auth.controller.js';
+import { AdminAuthService } from './auth/admin-auth.service.js';
+import { AdminAuthGuard } from './auth/admin-auth.guard.js';
+import { AdminResourcesController } from './admin/resources.controller.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -69,6 +73,8 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    AdminResourcesController,
+    AdminAuthController,
     MaterialAnalysisController,
     CommunityController,
     CoursesController,
@@ -91,6 +97,8 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    AdminAuthService,
+    AdminAuthGuard,
     MaterialAnalysisService,
     MaterialAnalysisProcessor,
     MaterialAnalysisRunner,

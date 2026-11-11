@@ -22,7 +22,7 @@ async function bootstrap() {
 
   // PDF 원본의 base64 전송만 큰 본문을 허용해 일반 변경 요청의 크기와 분리한다.
   app.use(
-    '/api/materials',
+    ['/api/materials', '/api/admin/resources/materials'],
     (
       request: express.Request,
       response: express.Response,

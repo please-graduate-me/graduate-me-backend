@@ -10,7 +10,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
+import type { UserRequest } from '../auth/auth.guard.js';
+import { AdminAuthGuard } from '../auth/admin-auth.guard.js';
 import { AdminGuard } from './admin.guard.js';
 import {
   MaterialAccessService,
@@ -19,7 +20,7 @@ import {
 
 /** 운영자 전용 자료 공개 설정에도 소유권과 기존 공개 여부를 재검사한다. */
 @Controller('admin/workspace/materials')
-@UseGuards(AuthGuard, AdminGuard)
+@UseGuards(AdminAuthGuard, AdminGuard)
 export class MaterialAccessController {
   constructor(
     @Inject(MaterialAccessService)

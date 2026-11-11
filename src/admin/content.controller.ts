@@ -11,7 +11,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
+import type { UserRequest } from '../auth/auth.guard.js';
+import { AdminAuthGuard } from '../auth/admin-auth.guard.js';
 import { WorkspaceGuard } from './workspace.guard.js';
 import { AdminGuard } from './admin.guard.js';
 import { ContentService } from './content.service.js';
@@ -27,7 +28,7 @@ const querySchema = z.object({ questionId: z.uuid() });
 
 /** 실제 수정·검토와 사용량 조회에 자료별·역할별 권한을 적용한다. */
 @Controller('admin/workspace')
-@UseGuards(AuthGuard, WorkspaceGuard)
+@UseGuards(AdminAuthGuard, WorkspaceGuard)
 export class ContentController {
   constructor(
     @Inject(ContentService) private readonly content: ContentService,

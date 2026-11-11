@@ -206,10 +206,18 @@ describe.skipIf(!testUrl)('공유와 백오피스 DB 통합', () => {
     ).toMatchObject({ currentIndex: 2, archivedAt: null });
   });
 
-  it('관리자 이메일을 명시하지 않으면 누구도 관리자로 판정하지 않는다', async () => {
+  it('Google 이메일만으로는 운영 권한을 부여하지 않는다', async () => {
     vi.stubEnv('ADMIN_EMAILS', '');
     expect(await admin.allowed(creatorId)).toBe(false);
     vi.stubEnv('ADMIN_EMAILS', ` ${email.toUpperCase()} `);
+    expect(await admin.allowed(creatorId)).toBe(false);
+    vi.stubEnv('ADMIN_LOGIN_ID', 'test-operator');
+
+    await db.query(
+      'INSERT INTO "AdminOperator"(username,"userId") VALUES($1,$2)',
+      ['test-operator', creatorId]
+    );
+
     expect(await admin.allowed(creatorId)).toBe(true);
     expect(await admin.allowed(learnerId)).toBe(false);
     const listing = await admin.shares({ page: 1, limit: 20, q: email });

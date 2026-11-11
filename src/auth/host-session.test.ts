@@ -152,7 +152,7 @@ describe('허용된 앱별 OAuth·host-only 세션 계약', () => {
   });
 
   it('실제 ExpressAuth의 CSRF·state·PKCE 쿠키와 Google redirect_uri가 시작한 호스트에 남는다', async () => {
-    for (const host of ['pleasegraduate.me', 'admin.pleasegraduate.me']) {
+    for (const host of ['pleasegraduate.me']) {
       const csrf = await localRequest(host, '/api/auth/csrf');
 
       expect(csrf.status).toBe(200);
@@ -204,35 +204,22 @@ describe('허용된 앱별 OAuth·host-only 세션 계약', () => {
     expect(auth.config.providers[0]).not.toHaveProperty('clientId');
   });
 
-  it('다른 호스트에서 발급한 CSRF와 현재 호스트 쿠키를 섞으면 OAuth로 진행하지 않는다', async () => {
-    const student = await localRequest('pleasegraduate.me', '/api/auth/csrf');
-
-    const admin = await localRequest(
-      'admin.pleasegraduate.me',
-      '/api/auth/csrf'
-    );
-
-    const response = await localRequest(
-      'admin.pleasegraduate.me',
+  it('관리자 호스트에서는 Google 로그인과 CSRF 경로를 제공하지 않는다', async () => {
+    for (const path of [
+      '/api/auth/csrf',
       '/api/auth/signin/google',
-      'POST',
-      new URLSearchParams({
-        csrfToken: JSON.parse(student.body).csrfToken,
-        callbackUrl: 'https://admin.pleasegraduate.me/',
-      }).toString(),
-      jar(admin)
-    );
+      '/api/auth/callback/google',
+    ]) {
+      const response = await localRequest('admin.pleasegraduate.me', path);
 
-    expect(response.status).toBe(302);
-
-    expect(new URL(String(response.headers.location)).origin).toBe(
-      'https://admin.pleasegraduate.me'
-    );
+      expect(response.status).toBe(404);
+      expect(cookies(response)).toEqual([]);
+    }
 
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
-  it('AUTH_URL이 HTTP 학생 주소여도 HTTPS 관리자 세션의 보안 쿠키와 DB 계약을 사용한다', async () => {
+  it('이전 관리자 호스트의 Google 쿠키는 일반 사용자 세션으로 복원하지 않는다', async () => {
     vi.stubEnv('AUTH_URL', 'http://localhost:3000');
 
     const getSessionAndUser = vi.fn(async (sessionToken: string) => ({
@@ -272,11 +259,10 @@ describe('허용된 앱별 OAuth·host-only 세션 계약', () => {
       'authjs.session-token=student-session'
     );
 
-    expect(JSON.parse(admin.body).user.id).toBe('admin-session');
+    expect(JSON.parse(admin.body)).toBeNull();
     expect(JSON.parse(student.body).user.id).toBe('student-session');
 
     expect(getSessionAndUser.mock.calls.map((args) => args[0])).toEqual([
-      'admin-session',
       'student-session',
     ]);
 

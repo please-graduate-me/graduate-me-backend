@@ -66,10 +66,30 @@ export class AuthService {
     };
   }
   handle(request: Request, response: Response, next: NextFunction) {
+    if (
+      new URL(process.env.AUTH_URL ?? 'http://localhost:3000').origin !==
+        new URL(process.env.ADMIN_URL ?? 'http://localhost:3001').origin &&
+      authRequestOrigin(request).origin ===
+        new URL(process.env.ADMIN_URL ?? 'http://localhost:3001').origin
+    ) {
+      response.status(404).json({
+        error: '운영 콘솔은 관리자 아이디와 비밀번호로 로그인해 주세요.',
+      });
+
+      return;
+    }
+
     return ExpressAuth(this.forRequest(request))(request, response, next);
   }
   async session(request: Request) {
     if (!this.configured) return null;
+    if (
+      new URL(process.env.AUTH_URL ?? 'http://localhost:3000').origin !==
+        new URL(process.env.ADMIN_URL ?? 'http://localhost:3001').origin &&
+      authRequestOrigin(request).origin ===
+        new URL(process.env.ADMIN_URL ?? 'http://localhost:3001').origin
+    )
+      return null;
     const origin = authRequestOrigin(request);
 
     // express getSession은 전역 AUTH_URL을 우선하므로 직접 현재 앱의 세션 URL을 구성한다.

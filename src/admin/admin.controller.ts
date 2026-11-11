@@ -10,13 +10,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { adminShareQuerySchema } from './contracts.js';
-import { AuthGuard, type UserRequest } from '../auth/auth.guard.js';
+import type { UserRequest } from '../auth/auth.guard.js';
+import { AdminAuthGuard } from '../auth/admin-auth.guard.js';
 import { AdminGuard } from './admin.guard.js';
 import { AdminService } from './admin.service.js';
 
 /** 권한 확인 외의 운영 데이터는 관리자에게만 제공한다. */
 @Controller('admin')
-@UseGuards(AuthGuard)
+@UseGuards(AdminAuthGuard)
 export class AdminController {
   constructor(@Inject(AdminService) private readonly admin: AdminService) {}
   @Get('access')

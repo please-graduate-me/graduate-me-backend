@@ -2,7 +2,6 @@ import { containsPattern } from '../database/query.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import type { AdminShareQuery } from './contracts.js';
-import { User } from '../database/entities/User.entity.js';
 import { ShareLink } from '../database/entities/ShareLink.entity.js';
 import { ShareVisit } from '../database/entities/ShareVisit.entity.js';
 import { ShareStart } from '../database/entities/ShareStart.entity.js';
@@ -13,20 +12,14 @@ import { HttpError } from '../common/http-error.js';
 export class AdminService {
   constructor(@Inject(DataSource) private readonly db: DataSource) {}
   async allowed(userId: string) {
-    const emails = (process.env.ADMIN_EMAILS ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
+    const rows: { allowed: boolean }[] = await this.db.query(
+      'SELECT EXISTS(SELECT 1 FROM "AdminOperator" WHERE "userId"=$1 AND username=$2) AS allowed',
+      [userId, process.env.ADMIN_LOGIN_ID?.trim() ?? '']
+    );
 
-    if (!emails.length) return false;
-
-    const user = await this.db.manager.findOne(User, {
-      where: { id: userId },
-      select: { email: true },
-    });
-
-    return Boolean(user?.email && emails.includes(user.email.toLowerCase()));
+    return rows[0].allowed;
   }
+
   async shares(query: AdminShareQuery) {
     return this.db.transaction(async (tx) => {
       const builder = tx
