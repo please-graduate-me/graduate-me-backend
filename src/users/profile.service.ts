@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
+import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { Material } from '../database/entities/Material.entity.js';
 import { MaterialAccess } from '../database/entities/MaterialAccess.entity.js';
@@ -34,7 +35,13 @@ export class ProfileService {
 
     if (!user) throw new HttpError(404, '사용자를 찾을 수 없습니다.');
 
-    return user;
+    return {
+      ...user,
+      isHelper: await this.db.manager.existsBy(HelperProfile, {
+        userId,
+        active: true,
+      }),
+    };
   }
   async update(userId: string, input: z.infer<typeof profileInputSchema>) {
     const result = await this.db.manager.update(User, { id: userId }, input);

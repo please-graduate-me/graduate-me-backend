@@ -2,8 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, In, Not } from 'typeorm';
 import type { z } from 'zod';
 import { containsPattern } from '../database/query.js';
-import { Material } from '../database/entities/Material.entity.js';
-import { Video } from '../database/entities/Video.entity.js';
 import { Job } from '../database/entities/Job.entity.js';
 import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { LearningQuestion } from '../database/entities/LearningQuestion.entity.js';
@@ -120,35 +118,17 @@ export class WorkspaceOperationsService {
         404,
         '먼저 서비스에 Google로 로그인한 계정만 도우미로 지정할 수 있습니다.'
       );
-    if (input.canRequestEdit && !input.canReview)
-      throw new HttpError(400, '수정 요청에는 검토 권한도 필요합니다.');
-    if (input.canEdit && !input.canReview)
-      throw new HttpError(400, '직접 수정에는 검토 권한도 필요합니다.');
-
-    // 자료 배정은 원본 공개 동의가 아니라 질문을 담당할 범위의 지정이다.
-    if (input.materialIds.length) {
-      const [materials, videos] = await Promise.all([
-        this.db.manager.findBy(Material, { id: In(input.materialIds) }),
-        this.db.manager.findBy(Video, { id: In(input.materialIds) }),
-      ]);
-
-      if (
-        new Set([...materials, ...videos].map((row) => row.id)).size !==
-        input.materialIds.length
-      )
-        throw new HttpError(400, '존재하는 자료만 배정할 수 있습니다.');
-    }
 
     const row = await this.db.transaction(async (tx) => {
       await tx.upsert(
         HelperProfile,
         {
           userId: user.id,
-          languages: input.languages,
-          materialIds: input.materialIds,
-          canReview: input.canReview,
-          canEdit: input.canEdit ?? false,
-          canRequestEdit: input.canRequestEdit,
+          languages: [],
+          materialIds: [],
+          canReview: false,
+          canEdit: false,
+          canRequestEdit: false,
           active: input.active,
         },
         ['userId']
@@ -159,7 +139,7 @@ export class WorkspaceOperationsService {
         userId,
         null,
         'helper_permissions_changed',
-        `${input.email}: 언어 ${input.languages.join(', ')}, 자료 ${input.materialIds.length}개, 검토 ${input.canReview}, 수정 요청 ${input.canRequestEdit}, 활성 ${input.active}`
+        `${input.email}: 조교 자격 활성 ${input.active}`
       );
 
       return tx.findOneByOrFail(HelperProfile, { userId: user.id });

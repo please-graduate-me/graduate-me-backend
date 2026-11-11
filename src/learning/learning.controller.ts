@@ -1,3 +1,4 @@
+import { HttpError } from '../common/http-error.js';
 import { materialPolicy } from './material-policy.js';
 import {
   Body,
@@ -151,7 +152,15 @@ export class LearningController {
   @Post('questions')
   @HttpCode(200)
   questionCreate(@Req() r: UserRequest, @Body() body: unknown) {
-    return this.questions.create(r.userId, questionInputSchema.parse(body));
+    const input = questionInputSchema.parse(body);
+
+    if (input.kind !== 'report' || input.assigneeId)
+      throw new HttpError(
+        410,
+        '학습 질문은 커뮤니티에 게시하고 조교를 태그해 주세요.'
+      );
+
+    return this.questions.create(r.userId, input);
   }
   @Get('questions/:id')
   question(@Req() r: UserRequest, @Param('id') id: string) {
@@ -171,11 +180,17 @@ export class LearningController {
   }
   @Post('questions/:id/messages')
   @HttpCode(200)
-  followUp(
+  async followUp(
     @Req() r: UserRequest,
     @Param('id') id: string,
     @Body() body: unknown
   ) {
+    if ((await this.questions.owned(r.userId, id)).kind !== 'report')
+      throw new HttpError(
+        410,
+        '기존 개인 질문은 이력으로 보존합니다. 새 질문은 커뮤니티를 이용해 주세요.'
+      );
+
     return this.questions.followUp(
       r.userId,
       id,

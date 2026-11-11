@@ -399,6 +399,7 @@ describe.skipIf(!testUrl)('자료 공개·원본 버전·개인 기록의 저장
     });
 
     expect(await profiles.get(departing)).toEqual({
+      isHelper: false,
       targetLanguage: 'th',
       explanationLanguage: 'ko',
       level: 'intermediate',

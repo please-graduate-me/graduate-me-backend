@@ -10,6 +10,7 @@ export const communityPostSchema = z
     visibility: z.enum(['public', 'accounts']),
     allowedUserIds: z.array(z.string().min(1).max(128)).max(100).default([]),
     source: sourceInputSchema.optional(),
+    taggedHelperIds: z.array(z.string().min(1).max(128)).max(20).default([]),
   })
   .refine(
     (v) => v.visibility !== 'accounts' || v.allowedUserIds.length > 0,
@@ -21,6 +22,7 @@ export const communityQuerySchema = z.object({
   language: z.enum(['en', 'th']).optional(),
   q: z.string().max(100).default(''),
   following: z.enum(['true', 'false']).default('false'),
+  tagged: z.enum(['true', 'false']).default('false'),
   page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });

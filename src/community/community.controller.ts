@@ -29,6 +29,9 @@ export class CommunityController {
   constructor(
     @Inject(CommunityService) private readonly community: CommunityService
   ) {}
+  @Get('helpers') helpers() {
+    return this.community.helpers();
+  }
   @Get('posts') list(@Req() r: UserRequest, @Query() q: unknown) {
     return this.community.list(r.userId, communityQuerySchema.parse(q));
   }

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { languageSchema } from '../learning/contracts.js';
 import { workspaceQuerySchema } from '../learning/contracts.js';
 
 /** 질문의 상태와 기간도 페이지를 나누기 전에 서버 권한 범위 전체에 적용한다. */
@@ -70,22 +69,11 @@ export const resolutionInputSchema = z.object({
   resolution: z.string().trim().min(1).max(5000),
 });
 
-/** 도우미의 자료와 수행 권한을 각각 지정한다. */
+/** 조교 자격은 일반 사용자 계정에 부여하고 내부 운영 권한을 추가하지 않는다. */
 export const helperInputSchema = z.object({
   email: z
     .email()
     .max(320)
     .transform((v) => v.toLowerCase()),
-  languages: z
-    .array(languageSchema)
-    .max(2)
-    .refine((v) => new Set(v).size === v.length),
-  materialIds: z
-    .array(z.string().min(1).max(128))
-    .max(200)
-    .refine((v) => new Set(v).size === v.length),
-  canReview: z.boolean(),
-  canRequestEdit: z.boolean(),
   active: z.boolean(),
-  canEdit: z.boolean().optional(),
 });

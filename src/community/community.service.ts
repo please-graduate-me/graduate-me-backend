@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import type { z } from 'zod';
 import { HttpError } from '../common/http-error.js';
+import { HelperProfile } from '../database/entities/HelperProfile.entity.js';
 import { User } from '../database/entities/User.entity.js';
 import { containsPattern } from '../database/query.js';
 import { SourceService } from '../learning/source.service.js';
@@ -15,13 +16,14 @@ type Post = {
   language: 'en' | 'th';
   visibility: 'public' | 'accounts';
   allowedUserIds: string[];
+  taggedHelperIds: string[];
   source: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
   hiddenAt: Date | null;
 };
 
-/** 일반 커뮤니티는 개인 질문·도우미 검토와 분리하고 게시한 글·발췌만 공개한다. */
+/** 조교도 일반 사용자로 참여하며 태그는 게시글의 공개 범위 안에서만 노출한다. */
 @Injectable()
 export class CommunityService {
   constructor(
@@ -41,6 +43,19 @@ export class CommunityService {
   private async dto(userId: string, row: Post) {
     const author = await this.db.manager.findOneBy(User, { id: row.ownerId });
 
+    const helper = await this.db.manager.existsBy(HelperProfile, {
+      userId: row.ownerId,
+      active: true,
+    });
+
+    const helpers: { id: string; name: string | null }[] = row.taggedHelperIds
+      .length
+      ? await this.db.query(
+          `SELECT u.id,u.name FROM "User" u JOIN "HelperProfile" h ON h."userId"=u.id WHERE u.id=ANY($1::text[]) AND h.active=true ORDER BY u.name,u.id`,
+          [row.taggedHelperIds]
+        )
+      : [];
+
     const counts: {
       likes: number;
       comments: number;
@@ -58,16 +73,24 @@ export class CommunityService {
     return {
       ...row,
       allowedUserIds: row.ownerId === userId ? row.allowedUserIds : [],
-      author: { id: row.ownerId, name: author?.name ?? null },
+      author: { id: row.ownerId, name: author?.name ?? null, isHelper: helper },
+      taggedHelpers: helpers,
       owned: row.ownerId === userId,
       ...counts[0],
     };
   }
   async list(userId: string, query: z.infer<typeof communityQuerySchema>) {
+    if (
+      query.tagged === 'true' &&
+      !(await this.db.manager.existsBy(HelperProfile, { userId, active: true }))
+    )
+      throw new HttpError(403, '조교만 태그된 게시글을 조회할 수 있습니다.');
+
     const rows: Post[] = await this.db.query(
       `SELECT p.* FROM "CommunityPost" p WHERE (p."hiddenAt" IS NULL OR p."ownerId"=$1) AND (p."ownerId"=$1 OR p.visibility='public' OR p."allowedUserIds" ? $1)
       AND ($2::text IS NULL OR p.language=$2) AND (p.title ILIKE $3 OR p.body ILIKE $3)
       AND (NOT $4::boolean OR EXISTS(SELECT 1 FROM "CommunityFollow" f WHERE f."followerId"=$1 AND f."followingId"=p."ownerId"))
+      AND (NOT $7::boolean OR p."taggedHelperIds" ? $1)
       ORDER BY p."updatedAt" DESC,p.id LIMIT $5 OFFSET $6`,
       [
         userId,
@@ -76,6 +99,7 @@ export class CommunityService {
         query.following === 'true',
         query.limit + 1,
         (query.page - 1) * query.limit,
+        query.tagged === 'true',
       ]
     );
 
@@ -103,6 +127,26 @@ export class CommunityService {
     )
       throw new HttpError(400, '공개할 계정을 확인해 주세요.');
 
+    const taggedHelperIds = [...new Set(input.taggedHelperIds)];
+
+    if (
+      taggedHelperIds.length &&
+      (await this.db.manager.countBy(HelperProfile, {
+        userId: In(taggedHelperIds),
+        active: true,
+      })) !== taggedHelperIds.length
+    )
+      throw new HttpError(400, '활성화된 조교만 태그할 수 있습니다.');
+    // 태그가 비공개 글의 수신 범위를 암묵적으로 넓히지 않게 한다.
+    if (
+      input.visibility === 'accounts' &&
+      taggedHelperIds.some((id) => id !== userId && !allowed.includes(id))
+    )
+      throw new HttpError(
+        400,
+        '태그할 조교를 글의 공개 대상에도 포함해 주세요.'
+      );
+
     // 선택 발췌만 저장해 비공개 PDF·원문 전체의 권한이 글 공개로 함께 열리지 않게 한다.
     const source = input.source
       ? await this.sources.resolve(userId, input.source)
@@ -126,24 +170,31 @@ export class CommunityService {
       await this.readable(userId, id);
 
       rows = await this.db.query(
-        `WITH changed AS (UPDATE "CommunityPost" SET title=$1,body=$2,language=$3,visibility=$4,"allowedUserIds"=$5,source=$6,"updatedAt"=now() WHERE id=$7 AND "ownerId"=$8 RETURNING *) SELECT * FROM changed`,
-        [...params, id, userId]
+        `WITH changed AS (UPDATE "CommunityPost" SET title=$1,body=$2,language=$3,visibility=$4,"allowedUserIds"=$5,source=$6,"taggedHelperIds"=$9,"updatedAt"=now() WHERE id=$7 AND "ownerId"=$8 RETURNING *) SELECT * FROM changed`,
+        [...params, id, userId, JSON.stringify(taggedHelperIds)]
       );
 
       if (!rows[0]) throw new HttpError(403, '본인의 글만 수정할 수 있습니다.');
     } else
       rows = await this.db.query(
-        `INSERT INTO "CommunityPost"(title,body,language,visibility,"allowedUserIds",source,"ownerId") VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [...params, userId]
+        `INSERT INTO "CommunityPost"(title,body,language,visibility,"allowedUserIds",source,"ownerId","taggedHelperIds") VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [...params, userId, JSON.stringify(taggedHelperIds)]
       );
 
     return this.dto(userId, rows[0]);
+  }
+  async helpers() {
+    const items: { id: string; name: string | null }[] = await this.db.query(
+      `SELECT u.id,u.name FROM "HelperProfile" h JOIN "User" u ON u.id=h."userId" WHERE h.active=true ORDER BY u.name,u.id`
+    );
+
+    return { items };
   }
   async get(userId: string, id: string) {
     const row = await this.readable(userId, id);
 
     const comments: Record<string, unknown>[] = await this.db.query(
-      `SELECT c.id,c.body,c."createdAt",c."ownerId",u.name AS "authorName" FROM "CommunityComment" c JOIN "User" u ON u.id=c."ownerId" WHERE c."postId"=$1 ORDER BY c."createdAt",c.id`,
+      `SELECT c.id,c.body,c."createdAt",c."ownerId",u.name AS "authorName",EXISTS(SELECT 1 FROM "HelperProfile" h WHERE h."userId"=u.id AND h.active=true) AS "isHelper" FROM "CommunityComment" c JOIN "User" u ON u.id=c."ownerId" WHERE c."postId"=$1 ORDER BY c."createdAt",c.id`,
       [id]
     );
 
@@ -153,7 +204,7 @@ export class CommunityService {
         id: c.id,
         body: c.body,
         createdAt: c.createdAt,
-        author: { id: c.ownerId, name: c.authorName },
+        author: { id: c.ownerId, name: c.authorName, isHelper: c.isHelper },
         owned: c.ownerId === userId,
       })),
     };
