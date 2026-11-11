@@ -1,3 +1,7 @@
+import { MaterialAnalysisController } from './material-analysis/material-analysis.controller.js';
+import { MaterialAnalysisService } from './material-analysis/material-analysis.service.js';
+import { MaterialAnalysisProcessor } from './material-analysis/material-analysis.processor.js';
+import { MaterialAnalysisRunner } from './material-analysis/material-analysis.runner.js';
 import { LearningHistoryService } from './ai/learning-history.service.js';
 import { PersonalizationService } from './insights/personalization.service.js';
 import { CommunityController } from './community/community.controller.js';
@@ -65,6 +69,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    MaterialAnalysisController,
     CommunityController,
     CoursesController,
     InsightsController,
@@ -86,6 +91,9 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    MaterialAnalysisService,
+    MaterialAnalysisProcessor,
+    MaterialAnalysisRunner,
     LearningHistoryService,
     PersonalizationService,
     CommunityService,

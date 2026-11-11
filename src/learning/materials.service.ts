@@ -1,3 +1,4 @@
+import { enqueueMaterialAnalysis } from '../material-analysis/material-analysis.service.js';
 import { activeProviderIdentity } from '../ai/provider-config.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, MoreThanOrEqual } from 'typeorm';
@@ -237,6 +238,8 @@ export class MaterialsService {
         version: 1,
       });
 
+      await enqueueMaterialAnalysis(tx, material);
+
       return material;
     });
 
@@ -451,6 +454,8 @@ export class MaterialsService {
           currentPage: next.currentPage,
         }
       );
+
+      await enqueueMaterialAnalysis(tx, next);
 
       await tx.update(
         MaterialAccess,
