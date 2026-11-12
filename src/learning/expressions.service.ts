@@ -1,3 +1,8 @@
+import {
+  awardLearningReward,
+  learningRewardReceipt,
+  reviewRewardTarget,
+} from '../growth/rewards.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { z } from 'zod';
@@ -218,11 +223,14 @@ export class ExpressionsService {
           )
             throw new HttpError(409, '이미 사용한 자가점검 요청 식별자입니다.');
 
-          return existing;
+          return {
+            ...existing,
+            reward: await learningRewardReceipt(tx, userId, existing.id),
+          };
         }
       }
 
-      return tx.save(PracticeAttempt, {
+      const attempt = await tx.save(PracticeAttempt, {
         ...(input.requestId ? { id: input.requestId } : {}),
         ownerId: userId,
         expressionId: expression.id,
@@ -235,8 +243,20 @@ export class ExpressionsService {
           source: expression.source,
         },
       });
+
+      const reward = await awardLearningReward(
+        tx,
+        userId,
+        'review',
+        reviewRewardTarget(expression.source, expression.text),
+        attempt.id,
+        false,
+        expression.createdAt
+      );
+
+      return { ...attempt, reward };
     });
 
-    return { id: row.id, createdAt: row.createdAt };
+    return { id: row.id, createdAt: row.createdAt, reward: row.reward };
   }
 }

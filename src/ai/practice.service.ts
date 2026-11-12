@@ -1,3 +1,7 @@
+import {
+  awardLearningReward,
+  learningRewardReceipt,
+} from '../growth/rewards.js';
 import { LearningHistoryService } from './learning-history.service.js';
 import { assertLearningEligibility } from '../learning/material-policy.js';
 import { Inject, Injectable } from '@nestjs/common';
@@ -348,7 +352,14 @@ export class PracticeService {
       )
         throw new HttpError(409, '이미 사용한 답안 요청입니다.');
 
-      return exerciseResult(previous);
+      return {
+        ...exerciseResult(previous),
+        reward: await learningRewardReceipt(
+          this.db.manager,
+          ownerId,
+          input.requestId
+        ),
+      };
     }
 
     const row = await this.eligible(ownerId, id, input.version),
@@ -413,7 +424,10 @@ export class PracticeService {
         )
           throw new HttpError(409, '이미 사용한 답안 요청입니다.');
 
-        return exerciseResult(existing);
+        return {
+          ...exerciseResult(existing),
+          reward: await learningRewardReceipt(tx, ownerId, input.requestId),
+        };
       }
 
       const current = await tx.findOneOrFail(LearningArtifact, {
@@ -464,7 +478,19 @@ export class PracticeService {
         draft: input.answer,
       });
 
-      return exerciseResult(attempt);
+      const reward =
+        attempt.correct === true
+          ? await awardLearningReward(
+              tx,
+              ownerId,
+              'exercise',
+              id,
+              input.requestId,
+              attempt.hintUsed || attempt.revealed
+            )
+          : null;
+
+      return { ...exerciseResult(attempt), reward };
     });
   }
   async attempts(ownerId: string, id: string) {
@@ -475,7 +501,14 @@ export class PracticeService {
       order: { createdAt: 'DESC' },
     });
 
-    return { items: rows.map(exerciseResult) };
+    return {
+      items: await Promise.all(
+        rows.map(async (row) => ({
+          ...exerciseResult(row),
+          reward: await learningRewardReceipt(this.db.manager, ownerId, row.id),
+        }))
+      ),
+    };
   }
 }
 

@@ -1,3 +1,7 @@
+import {
+  awardLearningReward,
+  learningRewardReceipt,
+} from '../growth/rewards.js';
 import { VideoPlayback } from '../database/entities/VideoPlayback.entity.js';
 import { playbackDto, playbackSnapshot } from './playback.js';
 import { materialPolicy } from '../learning/material-policy.js';
@@ -788,6 +792,7 @@ export class VideosService {
 
         return {
           grade: gradeSchema.parse(existing.result),
+          reward: await learningRewardReceipt(tx, userId, input.requestId),
           nextIndex: existing.correct ? activeIndex + 1 : activeIndex,
         };
       }
@@ -835,7 +840,18 @@ export class VideosService {
         { currentIndex: nextIndex, mode: input.mode }
       );
 
-      return { grade: result, nextIndex };
+      const reward = result.correct
+        ? await awardLearningReward(
+            tx,
+            userId,
+            'video',
+            segment.id,
+            input.requestId,
+            Boolean(state.revealed || progress.scriptViewed || state.hintCount)
+          )
+        : null;
+
+      return { grade: result, nextIndex, reward };
     });
   }
 }

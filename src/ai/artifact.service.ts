@@ -1,3 +1,4 @@
+import { learningRewardReceipt } from '../growth/rewards.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { LearningArtifact } from '../database/entities/LearningArtifact.entity.js';
@@ -162,7 +163,16 @@ export class ArtifactService {
         revealed: state.revealed,
         excluded: state.excluded,
       },
-      latestResult: latest ? exerciseResult(latest) : null,
+      latestResult: latest
+        ? {
+            ...exerciseResult(latest),
+            reward: await learningRewardReceipt(
+              this.db.manager,
+              ownerId,
+              latest.id
+            ),
+          }
+        : null,
       expressionIds: row.expressionIds,
     };
   }

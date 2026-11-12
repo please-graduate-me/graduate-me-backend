@@ -1,3 +1,5 @@
+import { GrowthController } from './growth/growth.controller.js';
+import { GrowthService } from './growth/growth.service.js';
 import { MaterialAnalysisController } from './material-analysis/material-analysis.controller.js';
 import { MaterialAnalysisService } from './material-analysis/material-analysis.service.js';
 import { MaterialAnalysisProcessor } from './material-analysis/material-analysis.processor.js';
@@ -73,6 +75,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions())],
   controllers: [
+    GrowthController,
     AdminResourcesController,
     AdminAuthController,
     MaterialAnalysisController,
@@ -97,6 +100,7 @@ import { MaterialAccessService } from './admin/material-access.service.js';
     MaterialAccessController,
   ],
   providers: [
+    GrowthService,
     AdminAuthService,
     AdminAuthGuard,
     MaterialAnalysisService,

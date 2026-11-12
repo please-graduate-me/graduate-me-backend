@@ -449,11 +449,13 @@ describe.skipIf(!testUrl)(
       expect(await db.manager.countBy(ExerciseAttempt, { id })).toBe(1);
       const before = generated.mock.calls.length;
 
-      await practice.answer(owner, item.id, {
+      const awarded = await practice.answer(owner, item.id, {
         requestId: randomUUID(),
         version: 1,
         answer: '기회',
       });
+
+      expect(awarded.reward).toMatchObject({ xp: 5 });
 
       expect(generated.mock.calls.length).toBe(before);
 

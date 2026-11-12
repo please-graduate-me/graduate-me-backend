@@ -117,6 +117,7 @@ describe.skipIf(!testUrl)('TypeORM 학습 저장과 동시 요청', () => {
     expect(results[0]).toMatchObject({
       grade: { correct: true },
       nextIndex: 1,
+      reward: { xp: 5, dailyBonus: 0, totalXp: 5 },
     });
 
     expect(

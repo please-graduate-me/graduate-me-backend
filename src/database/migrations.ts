@@ -1,3 +1,4 @@
+import { LearningGrowth1800000001800 } from './migrations/1800000001800-learning-growth.js';
 import { AdminCredentials1800000001700 } from './migrations/1800000001700-admin-credentials.js';
 import { CommunityHelpersAdmin1800000001600 } from './migrations/1800000001600-community-helpers-admin.js';
 import { MaterialAnalysis1800000001500 } from './migrations/1800000001500-material-analysis.js';
@@ -55,4 +56,5 @@ export const migrations = [
   MaterialAnalysis1800000001500,
   CommunityHelpersAdmin1800000001600,
   AdminCredentials1800000001700,
+  LearningGrowth1800000001800,
 ];
